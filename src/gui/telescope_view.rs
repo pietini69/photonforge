@@ -114,7 +114,7 @@ impl TelescopeViewState {
                 match res {
                     Ok(found_ip) => {
                         self.seestar_ip = found_ip.clone();
-                        self.discovery_status = Some(format!("Löydetty: {}", found_ip));
+                        self.discovery_status = Some(format!("{}: {}", crate::i18n::tr("Löydetty:"), found_ip));
                         let cfg = TelescopeConfig {
                             last_ip: found_ip,
                             scope_model: None,
@@ -211,7 +211,7 @@ impl TelescopeView {
                     state.section_connection_open = !state.section_connection_open;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("● {}", telem.state.display_fi())).color(Color32::from_rgb(sr, sg, sb)).strong().small());
+                    ui.label(RichText::new(format!("● {}", crate::i18n::tr(telem.state.display_fi()))).color(Color32::from_rgb(sr, sg, sb)).strong().small());
                 });
             });
 
@@ -266,25 +266,29 @@ impl TelescopeView {
 
                 // Specs badge
                 let (fov_w, fov_h) = telem.scope_model.fov_deg();
-                ui.label(
-                    RichText::new(format!(
-                        "📐 {}mm f/{:.1} | Kenno: {} | {} | FOV: {:.2}° × {:.2}°",
-                        telem.scope_model.focal_length_mm(),
-                        telem.scope_model.focal_ratio(),
-                        telem.scope_model.sensor_name(),
-                        telem.scope_model.protocol().protocol_name(),
-                        fov_w,
-                        fov_h
-                    ))
-                    .small()
-                    .color(Color32::from_rgb(140, 185, 215)),
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "📐 {}mm f/{:.1} | {}: {} | {} | FOV: {:.2}° × {:.2}°",
+                            telem.scope_model.focal_length_mm(),
+                            telem.scope_model.focal_ratio(),
+                            crate::i18n::tr("Kenno"),
+                            telem.scope_model.sensor_name(),
+                            telem.scope_model.protocol().protocol_name(),
+                            fov_w,
+                            fov_h
+                        ))
+                        .small()
+                        .color(Color32::from_rgb(140, 185, 215)),
+                    )
+                    .wrap(),
                 );
                 ui.add_space(2.0);
 
-                // Connection controls
-                ui.horizontal(|ui| {
-                    ui.label("IP:");
-                    ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(105.0));
+                // Connection controls - Row 1: IP, Etsi, Yhdistä
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("IP:").strong());
+                    ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(115.0));
 
                     if state.is_discovering {
                         ui.add_enabled(
@@ -311,10 +315,29 @@ impl TelescopeView {
                         state.save_settings(telem.scope_model.display_short());
                         client.connect(&state.seestar_ip);
                     }
+                });
 
+                // Connection controls - Row 2: Simulaatio & Automaattinen uudelleenyhdistys
+                ui.horizontal_wrapped(|ui| {
                     let mut sim = telem.is_simulation;
                     if ui.checkbox(&mut sim, crate::i18n::tr("🎮 Simulaatio")).on_hover_text(crate::i18n::tr("Kokeile ohjausta ja karttaa ilman kaukoputkea")).changed() {
                         client.set_simulation(sim);
+                    }
+
+                    let mut auto_reconn = telem.auto_reconnect_enabled;
+                    if ui
+                        .checkbox(&mut auto_reconn, crate::i18n::tr("🛡 Automaattinen uudelleenyhdistys"))
+                        .on_hover_text(crate::i18n::tr("Palauttaa TCP-yhteyden automaattisesti eksponentiaalisella viiveellä Wi-Fi-katkoksen sattuessa"))
+                        .changed()
+                    {
+                        client.set_auto_reconnect(auto_reconn);
+                    }
+                    if telem.state == SeestarState::Reconnecting {
+                        ui.label(
+                            RichText::new(format!("({} {}/{})", crate::i18n::tr("Yritys"), telem.reconnect_attempts, telem.max_reconnect_attempts))
+                                .small()
+                                .color(Color32::from_rgb(255, 170, 60)),
+                        );
                     }
                 });
 
@@ -326,7 +349,7 @@ impl TelescopeView {
                     } else {
                         Color32::from_rgb(255, 150, 120)
                     };
-                    ui.label(RichText::new(format!("📡 {}", msg)).small().color(col));
+                    ui.add(egui::Label::new(RichText::new(format!("📡 {}", msg)).small().color(col)).wrap());
                 }
 
                 if telem.scope_model.brand() == "ZWO Seestar" {
@@ -349,9 +372,9 @@ impl TelescopeView {
                             .color(Color32::from_rgb(120, 210, 255))
                         );
                     });
-                    ui.horizontal(|ui| {
-                        if ui.button(RichText::new(crate::i18n::tr("📁 Yhdistä kuvat Macille (SMB)")).color(Color32::from_rgb(100, 220, 255)).strong())
-                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa Macilla!"))
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(RichText::new(crate::i18n::tr("📁 Yhdistä kuvat tietokoneelle (SMB)")).color(Color32::from_rgb(100, 220, 255)).strong())
+                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan tiedostoselaimessa (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa tietokoneella!"))
                             .clicked()
                         {
                             LiveIngestManager::open_seestar_smb(&state.seestar_ip);
@@ -360,28 +383,10 @@ impl TelescopeView {
                     ui.add_space(2.0);
                 }
 
-                ui.horizontal(|ui| {
-                    let mut auto_reconn = telem.auto_reconnect_enabled;
-                    if ui
-                        .checkbox(&mut auto_reconn, crate::i18n::tr("🛡 Automaattinen uudelleenyhdistys"))
-                        .on_hover_text(crate::i18n::tr("Palauttaa TCP-yhteyden automaattisesti eksponentiaalisella viiveellä Wi-Fi-katkoksen sattuessa"))
-                        .changed()
-                    {
-                        client.set_auto_reconnect(auto_reconn);
-                    }
-                    if telem.state == SeestarState::Reconnecting {
-                        ui.label(
-                            RichText::new(format!("(Yritys {}/{})", telem.reconnect_attempts, telem.max_reconnect_attempts))
-                                .small()
-                                .color(Color32::from_rgb(255, 170, 60)),
-                        );
-                    }
-                });
-
                 ui.add_space(4.0);
 
                 // Telemetry indicators
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     // Battery
                     let bat_color = if telem.battery_pct > 50 {
                         Color32::from_rgb(100, 255, 120)
@@ -409,17 +414,19 @@ impl TelescopeView {
                 // Focus & Dither telemetry row
                 ui.horizontal_wrapped(|ui| {
                     let focus_str = if let Some(ftemp) = telem.last_focus_temp_c {
-                        format!("🔍 Tarkennus: {} ({:.1} °C)", telem.focus_position, ftemp)
+                        format!("{} {} ({:.1} °C)", crate::i18n::tr("🔍 Tarkennus:"), telem.focus_position, ftemp)
                     } else {
-                        format!("🔍 Tarkennus: {}", telem.focus_position)
+                        format!("{} {}", crate::i18n::tr("🔍 Tarkennus:"), telem.focus_position)
                     };
                     ui.label(RichText::new(focus_str).small().color(Color32::from_rgb(180, 215, 245)));
                     ui.separator();
                     ui.label(
                         RichText::new(format!(
-                            "🔀 Dither: {} ({} kpl)",
+                            "{} {} ({} {})",
+                            crate::i18n::tr("🔀 Dither:"),
                             if telem.dither_config.enabled { crate::i18n::tr("Päällä") } else { crate::i18n::tr("Pois") },
-                            telem.dither_count
+                            telem.dither_count,
+                            crate::i18n::tr("kpl")
                         ))
                         .small()
                         .color(Color32::from_rgb(190, 175, 245)),
@@ -430,16 +437,22 @@ impl TelescopeView {
 
                 // Scope current position
                 let (scope_alt, scope_az) = ra_dec_to_alt_az(telem.current_ra, telem.current_dec, lat, lon, &now_utc);
-                ui.label(
-                    RichText::new(format!(
-                        "Suunta: RA {} | Dec {}\nKorkeus: {:.1}° | Atsimuutti: {:.1}°",
-                        format_ra(telem.current_ra),
-                        format_dec(telem.current_dec),
-                        scope_alt,
-                        scope_az
-                    ))
-                    .size(11.5)
-                    .color(Color32::from_rgb(170, 185, 210)),
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "{}: RA {} | Dec {}\n{}: {:.1}° | {}: {:.1}°",
+                            crate::i18n::tr("Suunta"),
+                            format_ra(telem.current_ra),
+                            format_dec(telem.current_dec),
+                            crate::i18n::tr("Korkeus"),
+                            scope_alt,
+                            crate::i18n::tr("Atsimuutti"),
+                            scope_az
+                        ))
+                        .size(11.5)
+                        .color(Color32::from_rgb(170, 185, 210)),
+                    )
+                    .wrap(),
                 );
 
                 ui.add_space(4.0);
@@ -483,7 +496,14 @@ impl TelescopeView {
                 });
 
                 if !telem.last_log_message.is_empty() {
-                    ui.label(RichText::new(format!("Tila: {}", telem.last_log_message)).small().color(Color32::from_rgb(140, 190, 240)));
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!("{}: {}", crate::i18n::tr("Tila"), telem.last_log_message))
+                                .small()
+                                .color(Color32::from_rgb(140, 190, 240)),
+                        )
+                        .wrap(),
+                    );
                 }
             }
         });
@@ -498,12 +518,12 @@ impl TelescopeView {
             let arrow = if state.section_ingest_open { "▼" } else { "▶" };
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 📥 Kuvien lataus Macille", arrow)).color(Color32::from_rgb(100, 220, 255)).strong()).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(format!("{} 📥 {}", arrow, crate::i18n::tr("Kuvien lataus tietokoneelle"))).color(Color32::from_rgb(100, 220, 255)).strong()).frame(false)).clicked() {
                     state.section_ingest_open = !state.section_ingest_open;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if st.is_active {
-                        ui.label(RichText::new(format!("🟢 {} kpl", st.downloaded_count)).color(Color32::from_rgb(100, 255, 140)).strong().small());
+                        ui.label(RichText::new(format!("🟢 {} {}", st.downloaded_count, crate::i18n::tr("kpl"))).color(Color32::from_rgb(100, 255, 140)).strong().small());
                     } else {
                         ui.label(RichText::new(crate::i18n::tr("⚪ Ei yhteyttä")).color(Color32::from_rgb(150, 160, 180)).small());
                     }
@@ -512,16 +532,16 @@ impl TelescopeView {
 
             if state.section_ingest_open {
                 ui.add_space(2.0);
-                ui.checkbox(&mut cfg.enabled, crate::i18n::tr("✅ Tallenna uudet ruudut automaattisesti Macille"));
+                ui.checkbox(&mut cfg.enabled, crate::i18n::tr("✅ Tallenna uudet ruudut automaattisesti tietokoneelle"));
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let dest_str = cfg.destination_path.to_string_lossy().to_string();
-                    let short_dest = if dest_str.len() > 30 {
-                        format!("...{}", &dest_str[dest_str.len() - 27..])
+                    let short_dest = if dest_str.len() > 28 {
+                        format!("...{}", &dest_str[dest_str.len() - 25..])
                     } else {
                         dest_str
                     };
-                    ui.label(RichText::new(format!("Kohde: {}", short_dest)).small().color(Color32::from_rgb(200, 210, 230)));
+                    ui.label(RichText::new(format!("{}: {}", crate::i18n::tr("Kohde:"), short_dest)).small().color(Color32::from_rgb(200, 210, 230)));
 
                     if ui.button(crate::i18n::tr("📂 Valitse kansio")).clicked() {
                         if let Some(folder) = rfd::FileDialog::new().pick_folder() {
@@ -535,18 +555,18 @@ impl TelescopeView {
                     if telem.scope_model.brand() == "ZWO Seestar" {
                         if ui
                             .button(crate::i18n::tr("🔗 Yhdistä Seestarin verkkolevyyn (SMB)"))
-                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images)"))
+                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan tiedostoselaimessa (smb://<IP>/EMMC Images)"))
                             .clicked()
                         {
                             LiveIngestManager::open_seestar_smb(&state.seestar_ip);
                         }
                     } else {
-                        ui.label(RichText::new(format!("📁 Jako: {}", share_hint)).small().color(Color32::from_rgb(170, 200, 230)));
+                        ui.label(RichText::new(format!("{}: {}", crate::i18n::tr("Jako:"), share_hint)).small().color(Color32::from_rgb(170, 200, 230)));
                     }
                 });
 
                 if !st.status_message.is_empty() {
-                    ui.label(RichText::new(&st.status_message).small().color(Color32::from_rgb(160, 180, 210)));
+                    ui.add(egui::Label::new(RichText::new(&st.status_message).small().color(Color32::from_rgb(160, 180, 210))).wrap());
                 }
             }
         });
@@ -563,7 +583,7 @@ impl TelescopeView {
             });
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 🌌 Valittu kohde", arrow)).color(Color32::from_rgb(220, 230, 255)).strong()).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(format!("{} 🌌 {}", arrow, crate::i18n::tr("Valittu kohde"))).color(Color32::from_rgb(220, 230, 255)).strong()).frame(false)).clicked() {
                     state.section_target_open = !state.section_target_open;
                 }
                 if let Some(tb) = target_badge {
@@ -576,7 +596,7 @@ impl TelescopeView {
             if state.section_target_open {
                 if let Some(target) = &state.selected_object {
                     let (r, g, b) = target.obj_type.color_rgb();
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.heading(RichText::new(&target.id).color(Color32::from_rgb(r, g, b)).strong());
                         ui.label(RichText::new(&target.name).strong());
                     });
@@ -592,19 +612,19 @@ impl TelescopeView {
                         (crate::i18n::tr("🔴 Horisontin alla"), Color32::from_rgb(255, 80, 80))
                     };
 
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Tyyppi: {} {}", target.obj_type.icon(), target.obj_type.name_fi()));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("{}: {} {}", crate::i18n::tr("Tyyppi:"), target.obj_type.icon(), crate::i18n::tr(target.obj_type.name_fi())));
                         ui.separator();
                         ui.label(format!("Mag: {:.1}", target.magnitude));
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Korkeus: {:.1}°", cur_alt));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("{}: {:.1}°", crate::i18n::tr("Korkeus (Alt):"), cur_alt));
                         ui.colored_label(alt_quality.1, alt_quality.0);
                     });
 
-                    ui.label(format!("Suunta (Atsimuutti): {:.1}° | Tähdistö: {}", cur_az, target.constellation));
-                    ui.label(RichText::new(format!("Suodatin: {}", target.filter_recommendation)).small().color(Color32::from_rgb(140, 220, 255)));
+                    ui.add(egui::Label::new(format!("{}: {:.1}° | {}: {}", crate::i18n::tr("Suunta (Atsimuutti):"), cur_az, crate::i18n::tr("Tähdistö:"), target.constellation)).wrap());
+                    ui.add(egui::Label::new(RichText::new(format!("{}: {}", crate::i18n::tr("Suodatin:"), target.filter_recommendation)).small().color(Color32::from_rgb(140, 220, 255))).wrap());
 
                     ui.add_space(4.0);
 
@@ -616,7 +636,7 @@ impl TelescopeView {
                     ui.add_space(4.0);
 
                     // Add to Sequencer Row
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label(crate::i18n::tr("Kesto:"));
                         ui.add(egui::DragValue::new(&mut state.sequence_duration_mins).range(5..=360).suffix(" min"));
                         ui.checkbox(&mut state.sequence_use_lp, crate::i18n::tr("LP-suodatin"));
@@ -639,7 +659,7 @@ impl TelescopeView {
             let arrow = if state.section_search_open { "▼" } else { "▶" };
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 🔍 Etsi taivaankappaletta", arrow)).color(Color32::from_rgb(180, 210, 240)).strong()).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(format!("{} 🔍 {}", arrow, crate::i18n::tr("Etsi taivaankappaletta"))).color(Color32::from_rgb(180, 210, 240)).strong()).frame(false)).clicked() {
                     state.section_search_open = !state.section_search_open;
                 }
             });
@@ -721,10 +741,10 @@ impl TelescopeView {
         ui.group(|ui| {
             ui.set_width(ui.available_width());
             let arrow = if state.section_mosaic_open { "▼" } else { "▶" };
-            let panel_summary = format!("{} ruutua ({:.1} deg²)", state.mosaic_plan.panels.len(), state.mosaic_plan.total_area_sq_deg);
+            let panel_summary = format!("{} {} ({:.1} deg²)", state.mosaic_plan.panels.len(), crate::i18n::tr("ruutua"), state.mosaic_plan.total_area_sq_deg);
 
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 🧩 Mosaiikkikuvaus", arrow)).color(Color32::from_rgb(120, 220, 200)).strong()).frame(false)).clicked() {
+            ui.horizontal_wrapped(|ui| {
+                if ui.add(egui::Button::new(RichText::new(format!("{} 🧩 {}", arrow, crate::i18n::tr("Mosaiikkikuvaus"))).color(Color32::from_rgb(120, 220, 200)).strong()).frame(false)).clicked() {
                     state.section_mosaic_open = !state.section_mosaic_open;
                 }
                 let was_enabled = state.mosaic_enabled;
@@ -816,7 +836,7 @@ impl TelescopeView {
 
                 // Target center info
                 let center_label = state.selected_object.as_ref().map(|o| format!("{} ({})", o.id, o.name)).unwrap_or_else(|| crate::i18n::tr("Ei valittua kohdetta (valitse yltä)").to_string());
-                ui.label(RichText::new(format!("Keskipiste: {}", center_label)).small().color(Color32::from_rgb(160, 210, 240)));
+                ui.add(egui::Label::new(RichText::new(format!("{}: {}", crate::i18n::tr("Keskipiste:"), center_label)).small().color(Color32::from_rgb(160, 210, 240))).wrap());
 
                 // Quick Presets
                 ui.horizontal_wrapped(|ui| {
@@ -873,15 +893,15 @@ impl TelescopeView {
                 }
 
                 let plan = &state.mosaic_plan;
-                ui.label(RichText::new(format!(
-                    "📐 Kokonaisala: {:.2}° × {:.2}° ({:.1} deg²) | Ruutuja: {} kpl",
-                    plan.total_fov_w_deg, plan.total_fov_h_deg, plan.total_area_sq_deg, plan.panels.len()
-                )).small().color(Color32::from_rgb(130, 240, 200)));
+                ui.add(egui::Label::new(RichText::new(format!(
+                    "📐 {}: {:.2}° × {:.2}° ({:.1} deg²) | {}: {} {}",
+                    crate::i18n::tr("Kokonaisala:"), plan.total_fov_w_deg, plan.total_fov_h_deg, plan.total_area_sq_deg, crate::i18n::tr("Ruutuja:"), plan.panels.len(), crate::i18n::tr("kpl")
+                )).small().color(Color32::from_rgb(130, 240, 200))).wrap());
 
-                ui.label(RichText::new(format!(
-                    "⏱ Kokonaisvalotusaika yöllä: {} h {:02} min",
-                    plan.total_exposure_mins / 60, plan.total_exposure_mins % 60
-                )).small().color(Color32::from_rgb(255, 220, 140)));
+                ui.add(egui::Label::new(RichText::new(format!(
+                    "⏱ {}: {} h {:02} min",
+                    crate::i18n::tr("Kokonaisvalotusaika yöllä:"), plan.total_exposure_mins / 60, plan.total_exposure_mins % 60
+                )).small().color(Color32::from_rgb(255, 220, 140))).wrap());
 
                 ui.add_space(2.0);
 
@@ -913,7 +933,7 @@ impl TelescopeView {
             let arrow = if state.section_sequencer_open { "▼" } else { "▶" };
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 📅 Yösekvensseri", arrow)).color(Color32::from_rgb(255, 200, 80)).strong()).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(format!("{} 📅 {}", arrow, crate::i18n::tr("Yösekvensseri"))).color(Color32::from_rgb(255, 200, 80)).strong()).frame(false)).clicked() {
                     state.section_sequencer_open = !state.section_sequencer_open;
                 }
                 if seq_state.is_running {
@@ -947,7 +967,7 @@ impl TelescopeView {
                     }
                 });
 
-                ui.label(RichText::new(&seq_state.current_step_description).strong().size(12.0).color(Color32::from_rgb(255, 230, 120)));
+                ui.add(egui::Label::new(RichText::new(&seq_state.current_step_description).strong().size(12.0).color(Color32::from_rgb(255, 230, 120))).wrap());
 
                 let mut auto_park = seq_state.auto_park_at_end;
                 if ui.checkbox(&mut auto_park, crate::i18n::tr("🏠 Parkkeeraa aamulla automaattisesti")).changed() {
@@ -1008,7 +1028,7 @@ impl TelescopeView {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(crate::i18n::tr("Väli:"));
                                     dither_changed |= ui
-                                        .add(egui::DragValue::new(&mut dither_cfg.interval_frames).range(1..=20).prefix("joka ").suffix(". kuva"))
+                                        .add(egui::DragValue::new(&mut dither_cfg.interval_frames).range(1..=20).prefix(crate::i18n::tr("joka ")).suffix(crate::i18n::tr(". kuva")))
                                         .changed();
                                     ui.label(crate::i18n::tr("Siirto:"));
                                     dither_changed |= ui
@@ -1064,7 +1084,7 @@ impl TelescopeView {
 
                 // Target List - Structured 2-row cards with guaranteed visible title and buttons
                 if seq_state.targets.is_empty() {
-                    ui.label(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä. Valitse kohteita tähtikartalta ja paina 'Lisää sekvensseriin'.")).small().color(Color32::from_rgb(140, 150, 170)));
+                    ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä. Valitse kohteita tähtikartalta ja paina 'Lisää sekvensseriin'.")).small().color(Color32::from_rgb(140, 150, 170))).wrap());
                 } else {
                     for (idx, target) in seq_state.targets.iter().enumerate() {
                         let is_active = seq_state.current_job_idx == Some(idx);
@@ -1094,7 +1114,7 @@ impl TelescopeView {
                                         JobStatus::Failed => Color32::from_rgb(255, 100, 100),
                                         _ => Color32::from_rgb(160, 175, 200),
                                     };
-                                    ui.label(RichText::new(target.status.display_fi()).small().color(status_col));
+                                    ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).small().color(status_col));
 
                                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                                         let prefix = if is_active { "▶ " } else { "" };
@@ -1175,22 +1195,22 @@ impl TelescopeView {
                 ui.group(|ui| {
                     ui.horizontal_wrapped(|ui| {
                         let (sr, sg, sb) = telem.state.color_rgb();
-                        ui.label(RichText::new(format!("Kaukoputki: {}", telem.state.display_fi())).color(Color32::from_rgb(sr, sg, sb)).strong());
+                        ui.label(RichText::new(format!("{}: {}", crate::i18n::tr("Kaukoputki:"), crate::i18n::tr(telem.state.display_fi()))).color(Color32::from_rgb(sr, sg, sb)).strong());
                         ui.separator();
-                        ui.label(format!("Akku: {}%", telem.battery_pct));
+                        ui.label(format!("{}: {}%", crate::i18n::tr("Akku:"), telem.battery_pct));
                         ui.separator();
-                        ui.label(format!("Lämpötila: {:.1} °C", telem.temp_c));
+                        ui.label(format!("{}: {:.1} °C", crate::i18n::tr("Lämpötila:"), telem.temp_c));
                         ui.separator();
-                        ui.label(format!("Tarkennus: {} (AF: {} krt)", telem.focus_position, seq_state.af_runs_count));
+                        ui.label(format!("{}: {} (AF: {} {})", crate::i18n::tr("Tarkennus:"), telem.focus_position, seq_state.af_runs_count, crate::i18n::tr("krt")));
                         ui.separator();
-                        ui.label(format!("Ditheröinnit: {} kpl", seq_state.dithers_count));
+                        ui.label(format!("{}: {} {}", crate::i18n::tr("Ditheröinnit:"), seq_state.dithers_count, crate::i18n::tr("kpl")));
                         ui.separator();
                         let total_mins: u32 = seq_state.targets.iter().map(|t| t.duration_minutes).sum();
-                        ui.label(RichText::new(format!("Kokonaisaika: {} h {:02} min ({} kohdetta)", total_mins / 60, total_mins % 60, seq_state.targets.len())).color(Color32::from_rgb(255, 220, 120)));
+                        ui.label(RichText::new(format!("{}: {} h {:02} min ({} {})", crate::i18n::tr("Kokonaisaika:"), total_mins / 60, total_mins % 60, seq_state.targets.len(), crate::i18n::tr("kohdetta"))).color(Color32::from_rgb(255, 220, 120)));
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(&seq_state.current_step_description).strong().color(Color32::from_rgb(255, 230, 140)));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(egui::Label::new(RichText::new(&seq_state.current_step_description).strong().color(Color32::from_rgb(255, 230, 140))).wrap());
                         let mut auto_park = seq_state.auto_park_at_end;
                         if ui.checkbox(&mut auto_park, crate::i18n::tr("🏠 Parkkeeraa aamulla automaattisesti")).changed() {
                             sequencer.state.lock().unwrap().auto_park_at_end = auto_park;
@@ -1246,7 +1266,7 @@ impl TelescopeView {
                                     .changed();
                             });
                             let af_info = if let Some(last_t) = seq_state.last_af_temp_c {
-                                format!("Viimeisin AF: {:.1} °C ({} min sitten)", last_t, seq_state.minutes_since_last_af)
+                                format!("{}: {:.1} °C ({} {})", crate::i18n::tr("Viimeisin AF:"), last_t, seq_state.minutes_since_last_af, crate::i18n::tr("min sitten"))
                             } else {
                                 crate::i18n::tr("Viimeisin AF: Ei vielä suoritettu yöajossa").to_string()
                             };
@@ -1265,7 +1285,7 @@ impl TelescopeView {
                             ui.horizontal(|ui| {
                                 ui.label(crate::i18n::tr("Dither-väli:"));
                                 dither_changed |= ui
-                                    .add(egui::DragValue::new(&mut dither_cfg.interval_frames).range(1..=20).prefix("joka ").suffix(". ruutu"))
+                                    .add(egui::DragValue::new(&mut dither_cfg.interval_frames).range(1..=20).prefix(crate::i18n::tr("joka ")).suffix(crate::i18n::tr(". ruutu")))
                                     .changed();
                             });
                             ui.horizontal(|ui| {
@@ -1281,7 +1301,7 @@ impl TelescopeView {
                                     .changed();
                             });
                             ui.label(
-                                RichText::new(format!("Suoritetut ditheröinnit: {} kpl", seq_state.dithers_count))
+                                RichText::new(format!("{}: {} {}", crate::i18n::tr("Suoritetut ditheröinnit:"), seq_state.dithers_count, crate::i18n::tr("kpl")))
                                     .small()
                                     .color(Color32::from_rgb(160, 180, 205)),
                             );
@@ -1309,11 +1329,14 @@ impl TelescopeView {
                                 )
                                 .changed();
                             let conn_badge = if telem.connected || telem.is_simulation {
-                                format!("🟢 Yhteys kunnossa (toipumiset: {} krt)", seq_state.reconnect_events_count)
+                                format!("🟢 {} ({}: {} {})", crate::i18n::tr("Yhteys kunnossa"), crate::i18n::tr("toipumiset:"), seq_state.reconnect_events_count, crate::i18n::tr("krt"))
                             } else {
                                 format!(
-                                    "🟠 Palautetaan yhteyttä (yritys {}/{})",
-                                    telem.reconnect_attempts, telem.max_reconnect_attempts
+                                    "🟠 {} ({} {}/{})",
+                                    crate::i18n::tr("Palautetaan yhteyttä"),
+                                    crate::i18n::tr("yritys"),
+                                    telem.reconnect_attempts,
+                                    telem.max_reconnect_attempts
                                 )
                             };
                             ui.label(RichText::new(conn_badge).small().color(Color32::from_rgb(160, 180, 205)));
@@ -1373,7 +1396,7 @@ impl TelescopeView {
                                         JobStatus::Skipped => Color32::from_rgb(150, 160, 180),
                                         JobStatus::Pending => Color32::from_rgb(180, 190, 210),
                                     };
-                                    ui.label(RichText::new(target.status.display_fi()).color(status_color).strong());
+                                    ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).color(status_color).strong());
 
                                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                                         let prefix = if is_active { "▶ " } else { "" };
@@ -1397,12 +1420,12 @@ impl TelescopeView {
                             // Row 2: Target Badges / Metrics
                             ui.horizontal_wrapped(|ui| {
                                 let (alt, az) = ra_dec_to_alt_az(target.ra_hours, target.dec_deg, lat, lon, &now_utc);
-                                ui.label(RichText::new(format!("📐 Korkeus nyt: {:.1}° (Az: {:.0}°)", alt, az)).color(Color32::from_rgb(170, 185, 210)));
+                                ui.label(RichText::new(format!("📐 {}: {:.1}° (Az: {:.0}°)", crate::i18n::tr("Korkeus nyt:"), alt, az)).color(Color32::from_rgb(170, 185, 210)));
                                 ui.separator();
-                                ui.label(RichText::new(format!("⏱ Kesto: {} min", target.duration_minutes)).color(Color32::from_rgb(255, 220, 120)));
+                                ui.label(RichText::new(format!("⏱ {}: {} min", crate::i18n::tr("Kesto:"), target.duration_minutes)).color(Color32::from_rgb(255, 220, 120)));
                                 ui.separator();
                                 let filt_label = if target.use_lp_filter { "Dual-Band LP" } else { "UV/IR Cut" };
-                                ui.label(RichText::new(format!("🛡 Suodatin: {}", filt_label)).color(Color32::from_rgb(130, 220, 255)));
+                                ui.label(RichText::new(format!("🛡 {}: {}", crate::i18n::tr("Suodatin:"), filt_label)).color(Color32::from_rgb(130, 220, 255)));
                                 ui.separator();
                                 ui.label(RichText::new(format!("📍 RA: {:.2}h, Dec: {:+.1}°", target.ra_hours, target.dec_deg)).color(Color32::from_rgb(150, 165, 185)));
                             });
@@ -1452,7 +1475,7 @@ impl TelescopeView {
         ui.horizontal(|ui| {
             ui.heading(RichText::new(crate::i18n::tr("🌌 Interaktiivinen tähtikartta")).color(Color32::from_rgb(80, 200, 255)).strong());
             ui.separator();
-            ui.label(format!("Sijainti: {:.2}° N, {:.2}° E | UTC: {}", lat, lon, now_utc.format("%H:%M:%S")));
+            ui.label(format!("{}: {:.2}° N, {:.2}° E | UTC: {}", crate::i18n::tr("Sijainti:"), lat, lon, now_utc.format("%H:%M:%S")));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(crate::i18n::tr("🔍 Nollaa")).on_hover_text(crate::i18n::tr("Palauta keskitetty näkymä ja zoomaus")).clicked() {
@@ -1721,7 +1744,7 @@ impl TelescopeView {
             painter.text(
                 Pos2::new(pt.x, pt.y + 26.0),
                 egui::Align2::CENTER_TOP,
-                format!("⊕ {} ({})", telem.scope_model.display_short(), telem.state.display_fi()),
+                format!("⊕ {} ({})", telem.scope_model.display_short(), crate::i18n::tr(telem.state.display_fi())),
                 egui::FontId::proportional(12.0),
                 reticle_color,
             );
@@ -1775,9 +1798,9 @@ impl TelescopeView {
             let (alt, az) = ra_dec_to_alt_az(h.ra_hours, h.dec_deg, lat, lon, &now_utc);
             response.on_hover_ui(|ui| {
                 ui.heading(format!("{} {}", h.obj_type.icon(), h.name));
-                ui.label(format!("Katalogi: {} | Tähdistö: {}", h.id, h.constellation));
-                ui.label(format!("Korkeus: {:.1}° | Atsimuutti: {:.1}°", alt, az));
-                ui.label(format!("Magnitudi: {:.1} | Suodatin: {}", h.magnitude, h.filter_recommendation));
+                ui.label(format!("{}: {} | {}: {}", crate::i18n::tr("Katalogi:"), h.id, crate::i18n::tr("Tähdistö:"), h.constellation));
+                ui.label(format!("{}: {:.1}° | {}: {:.1}°", crate::i18n::tr("Korkeus (Alt):"), alt, crate::i18n::tr("Atsimuutti:"), az));
+                ui.label(format!("{}: {:.1} | {}: {}", crate::i18n::tr("Magnitudi:"), h.magnitude, crate::i18n::tr("Suodatin:"), h.filter_recommendation));
                 ui.label(RichText::new(crate::i18n::tr("Klikkaa valitaksesi kohteen")).small().color(Color32::from_rgb(120, 200, 255)));
             });
         }
@@ -1837,7 +1860,7 @@ impl TelescopeView {
         painter.text(
             Pos2::new(rect.right() - 4.0, rect.top() + 4.0),
             egui::Align2::RIGHT_TOP,
-            format!("Huippu: {:.0}° ({})", max_alt, max_time),
+            format!("{}: {:.0}° ({})", crate::i18n::tr("Huippu:"), max_alt, max_time),
             egui::FontId::proportional(10.0),
             Color32::from_rgb(255, 220, 100),
         );

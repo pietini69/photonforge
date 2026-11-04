@@ -140,7 +140,7 @@ impl LiveIngestManager {
                                         st.downloaded_count += 1;
                                         st.last_file_name = file_name.clone();
                                         st.last_sync_time = now_str.clone();
-                                        st.status_message = format!("✓ Ladattu uusi ruutu Macille: {} ({})", file_name, now_str);
+                                        st.status_message = format!("✓ Ladattu uusi ruutu tietokoneelle: {} ({})", file_name, now_str);
 
                                         // Trigger callback (e.g. Live Stacker)
                                         if auto_stack {
@@ -227,8 +227,21 @@ impl LiveIngestManager {
     }
 
     pub fn open_seestar_smb(seestar_ip: &str) {
-        let smb_url = format!("smb://{}/EMMC Images", seestar_ip);
-        let _ = std::process::Command::new("open").arg(&smb_url).spawn();
+        #[cfg(target_os = "macos")]
+        {
+            let smb_url = format!("smb://{}/EMMC Images", seestar_ip);
+            let _ = std::process::Command::new("open").arg(&smb_url).spawn();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let unc_path = format!(r"\\{}\EMMC Images", seestar_ip);
+            let _ = std::process::Command::new("explorer").arg(&unc_path).spawn();
+        }
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            let smb_url = format!("smb://{}/EMMC Images", seestar_ip);
+            let _ = std::process::Command::new("xdg-open").arg(&smb_url).spawn();
+        }
     }
 
     #[allow(dead_code)]

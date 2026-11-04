@@ -2,6 +2,31 @@
 
 All notable changes to **PhotonForge** are documented in this file.
 
+## [1.0.2] - 2026-11-04
+
+### Added & Improved
+- **Full Bilingual Localization in Telescope Control & Star Atlas:**
+  - Complete English and Finnish translations for all telescope states, DSO object classifications, night sequencer job statuses, telemetry metrics, and coordinate badges.
+  - Resolved lingering Finnish text showing up when English interface is active.
+- **Telescope Sidebar & Controls Layout Redesign:**
+  - Increased default sidebar width to 430 px with flexible resizing up to 750 px.
+  - Implemented responsive horizontal wrapping across IP connection controls, telemetry rows, mosaic planners, and sequencer cards to prevent any text or widgets from overflowing the screen boundary.
+- **Cross-Platform Neutrality:**
+  - Removed platform-specific references to "Macille" / "Macilla" across user-facing strings and live frame auto-downloaders, replacing them with platform-neutral "tietokoneelle" / "computer".
+  - Cross-platform network share mounting support (macOS `open`, Windows `explorer \\<IP>\...`, Linux `xdg-open`).
+- **Seestar Alpaca Discovery & Persistent Connection:**
+  - Automatic telescope detection via UDP broadcast and ARP/socket probing on port 32323.
+  - Remembers previously connected telescope IP address automatically.
+
+## [1.0.1] - 2026-11-04
+
+### Added & Improved
+- **ASCOM Alpaca Protocol Integration for Seestar S30/S50:**
+  - Direct HTTP Alpaca REST control for slew, tracking, park, unpark, auto-focus, dithering, and LP filter switching.
+  - Automated Wi-Fi reconnection watchdog with exponential backoff.
+- **Automated Universal Release Packaging:**
+  - Built universal macOS dmg/zip packages for both Apple Silicon (ARM64) and Intel (x86_64).
+
 ## [1.0.0] - 2026-11-04
 
 ### Added

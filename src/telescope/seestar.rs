@@ -24,41 +24,21 @@ pub enum SeestarState {
 }
 
 impl SeestarState {
-    pub fn display_name(&self) -> &'static str {
-        match crate::i18n::current_lang() {
-            crate::i18n::UiLang::Finnish => match self {
-                SeestarState::Disconnected => "Ei yhteyttä",
-                SeestarState::Connecting => "Yhdistetään...",
-                SeestarState::Reconnecting => "Palautetaan yhteyttä...",
-                SeestarState::Idle => "Valmiustilassa",
-                SeestarState::Slewing => "Kääntyy kohteeseen...",
-                SeestarState::Solving => "Kenttätunnistus...",
-                SeestarState::Focusing => "Tarkentaa...",
-                SeestarState::Tracking => "Seuraa kohdetta",
-                SeestarState::Stacking => "Valottaa & pinoaa",
-                SeestarState::Dithering => "Ditheröi...",
-                SeestarState::Parking => "Ajaa lepoasentoon...",
-                SeestarState::Parked => "Lepoasennossa",
-            },
-            crate::i18n::UiLang::English => match self {
-                SeestarState::Disconnected => "Disconnected",
-                SeestarState::Connecting => "Connecting...",
-                SeestarState::Reconnecting => "Reconnecting...",
-                SeestarState::Idle => "Idle",
-                SeestarState::Slewing => "Slewing...",
-                SeestarState::Solving => "Plate solving...",
-                SeestarState::Focusing => "Focusing...",
-                SeestarState::Tracking => "Tracking",
-                SeestarState::Stacking => "Exposing & stacking",
-                SeestarState::Dithering => "Dithering...",
-                SeestarState::Parking => "Parking...",
-                SeestarState::Parked => "Parked",
-            },
-        }
-    }
-
     pub fn display_fi(&self) -> &'static str {
-        self.display_name()
+        match self {
+            SeestarState::Disconnected => "Ei yhteyttä",
+            SeestarState::Connecting => "Yhdistetään...",
+            SeestarState::Reconnecting => "Palautetaan yhteyttä...",
+            SeestarState::Idle => "Valmiustilassa",
+            SeestarState::Slewing => "Kääntyy kohteeseen...",
+            SeestarState::Solving => "Kenttätunnistus...",
+            SeestarState::Focusing => "Tarkentaa...",
+            SeestarState::Tracking => "Seuraa kohdetta",
+            SeestarState::Stacking => "Valottaa & pinoaa",
+            SeestarState::Dithering => "Ditheröi...",
+            SeestarState::Parking => "Ajaa lepoasentoon...",
+            SeestarState::Parked => "Lepoasennossa",
+        }
     }
 
     pub fn color_rgb(&self) -> (u8, u8, u8) {
@@ -1108,7 +1088,7 @@ impl SeestarClient {
                                     let is_seestar_raw = { telem_clone.lock().unwrap().protocol == crate::telescope::mosaic::TelescopeProtocol::Seestar };
                                     if is_seestar_raw {
                                         let mut t = telem_clone.lock().unwrap();
-                                        t.last_log_message = "Seestar sulki TCP-ohjausportin 4700 (ZWO firmware -suojaus). Ota Seestar Alpaca käyttöön (portti 32323) tai pinoa kuvat Macilla SMB-jaolla.".to_string();
+                                        t.last_log_message = "Seestar sulki TCP-ohjausportin 4700 (ZWO firmware -suojaus). Ota Seestar Alpaca käyttöön (portti 32323) tai pinoa kuvat tietokoneella SMB-jaolla.".to_string();
                                         user_disconnected = true;
                                     }
                                 }

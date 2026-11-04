@@ -1923,12 +1923,12 @@ impl eframe::App for PhotonForgeApp {
                     let (status_text, status_col) = if telem.connected {
                         if !telem.is_simulation {
                             (
-                                format!("🔭 {}: {} (🔋 {}%)", scope_name, telem.state.display_fi(), telem.battery_pct),
+                                format!("🔭 {}: {} (🔋 {}%)", scope_name, crate::i18n::tr(telem.state.display_fi()), telem.battery_pct),
                                 Color32::from_rgb(100, 255, 140),
                             )
                         } else {
                             (
-                                format!("🎮 {}: Simulaatio (🔋 {}%)", scope_name, telem.battery_pct),
+                                format!("🎮 {}: {} (🔋 {}%)", scope_name, crate::i18n::tr("Simulaatio"), telem.battery_pct),
                                 Color32::from_rgb(120, 210, 255),
                             )
                         }
@@ -2001,8 +2001,8 @@ impl eframe::App for PhotonForgeApp {
         // Left Controls Panel
         if self.show_sidebar {
             egui::SidePanel::left("left_sidebar_panel_v2")
-                .default_width(390.0)
-                .width_range(350.0..=650.0)
+                .default_width(430.0)
+                .width_range(370.0..=750.0)
                 .resizable(true)
                 .frame(egui::Frame::side_top_panel(&ctx.style()).fill(Color32::from_rgb(22, 25, 34)))
                 .show(ctx, |ui| {
