@@ -54,6 +54,43 @@ impl TelescopeModel {
         ]
     }
 
+    pub fn from_name_or_short(s: &str) -> Option<TelescopeModel> {
+        let s_trim = s.trim();
+        let s_lower = s_trim.to_lowercase();
+        for &m in TelescopeModel::all() {
+            if m.display_short().eq_ignore_ascii_case(s_trim)
+                || m.display_name().eq_ignore_ascii_case(s_trim)
+            {
+                return Some(m);
+            }
+        }
+        if s_lower.contains("s-30 pro") || s_lower.contains("s30 pro") {
+            Some(TelescopeModel::SeestarS30Pro)
+        } else if s_lower.contains("s-30") || s_lower.contains("s30") {
+            Some(TelescopeModel::SeestarS30)
+        } else if s_lower.contains("s-50 pro") || s_lower.contains("s50 pro") {
+            Some(TelescopeModel::SeestarS50Pro)
+        } else if s_lower.contains("s-50") || s_lower.contains("s50") {
+            Some(TelescopeModel::SeestarS50)
+        } else if s_lower.contains("dwarf 3") || s_lower.contains("dwarf3") {
+            Some(TelescopeModel::Dwarf3)
+        } else if s_lower.contains("dwarf mini") {
+            Some(TelescopeModel::DwarfMini)
+        } else if s_lower.contains("dwarf 2") || s_lower.contains("dwarf ii") || s_lower.contains("dwarf2") {
+            Some(TelescopeModel::Dwarf2)
+        } else if s_lower.contains("draco") {
+            Some(TelescopeModel::DwarfDraco)
+        } else if s_lower.contains("origin") {
+            Some(TelescopeModel::CelestronOrigin)
+        } else if s_lower.contains("alpaca") {
+            Some(TelescopeModel::AscomAlpaca)
+        } else if s_lower.contains("oma") || s_lower.contains("custom") {
+            Some(TelescopeModel::Custom)
+        } else {
+            None
+        }
+    }
+
     pub fn display_name(&self) -> &'static str {
         match self {
             TelescopeModel::SeestarS30 => "ZWO Seestar S-30 (150mm f/5, 2.13° × 1.20°)",

@@ -56,13 +56,17 @@ pub struct TelescopeViewState {
 
 impl Default for TelescopeViewState {
     fn default() -> Self {
-        let mosaic_config = MosaicGridConfig::default();
-        let mosaic_plan = MosaicPlan::compute(&mosaic_config);
         let cfg = TelescopeConfig::load();
+        let model = cfg.get_model();
+        let ip = cfg.get_ip_for_model(model);
+
+        let mut mosaic_config = MosaicGridConfig::default();
+        mosaic_config.scope_model = model;
+        let mosaic_plan = MosaicPlan::compute(&mosaic_config);
 
         Self {
             center_view: TelescopeCenterView::StarMap,
-            seestar_ip: cfg.last_ip,
+            seestar_ip: ip,
             selected_object: None,
             search_query: String::new(),
             filter_type: None,
@@ -96,10 +100,10 @@ impl TelescopeViewState {
     pub fn save_settings(&self, scope_name: &str) {
         let clean_ip = self.seestar_ip.trim();
         if !clean_ip.is_empty() {
-            let cfg = TelescopeConfig {
-                last_ip: clean_ip.to_string(),
-                scope_model: Some(scope_name.to_string()),
-            };
+            let mut cfg = TelescopeConfig::load();
+            cfg.last_ip = clean_ip.to_string();
+            cfg.scope_model = Some(scope_name.to_string());
+            cfg.model_ips.insert(scope_name.to_string(), clean_ip.to_string());
             cfg.save();
         }
     }
@@ -129,10 +133,11 @@ impl TelescopeViewState {
                     Ok(found_ip) => {
                         self.seestar_ip = found_ip.clone();
                         self.discovery_status = Some(format!("{}: {}", crate::i18n::tr("Löydetty:"), found_ip));
-                        let cfg = TelescopeConfig {
-                            last_ip: found_ip,
-                            scope_model: None,
-                        };
+                        let mut cfg = TelescopeConfig::load();
+                        cfg.last_ip = found_ip.clone();
+                        if let Some(ref model) = cfg.scope_model {
+                            cfg.model_ips.insert(model.clone(), found_ip);
+                        }
                         cfg.save();
                     }
                     Err(err_msg) => {
@@ -267,10 +272,16 @@ impl TelescopeView {
                     if current_model != telem.scope_model {
                         client.set_model(current_model);
                         state.mosaic_config.scope_model = current_model;
-                        state.seestar_ip = current_model.default_ip().to_string();
+                        let mut cfg = TelescopeConfig::load();
+                        let target_ip = cfg.get_ip_for_model(current_model);
+                        state.seestar_ip = target_ip.clone();
+                        cfg.last_ip = target_ip.clone();
+                        cfg.scope_model = Some(current_model.display_short().to_string());
+                        cfg.model_ips.insert(current_model.display_short().to_string(), target_ip);
+                        cfg.save();
+
                         ingest_mgr.set_model_source_path(current_model);
                         state.recompute_mosaic();
-                        state.save_settings(current_model.display_short());
                     }
                 });
 
@@ -298,7 +309,17 @@ impl TelescopeView {
                 // Connection controls - Row 1: IP, Etsi, Yhdistä
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new("IP:").strong());
-                    ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(115.0));
+                    let ip_resp = ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(115.0));
+                    if ip_resp.changed() || ip_resp.lost_focus() {
+                        let clean = state.seestar_ip.trim().to_string();
+                        if !clean.is_empty() {
+                            let mut cfg = TelescopeConfig::load();
+                            cfg.last_ip = clean.clone();
+                            cfg.scope_model = Some(telem.scope_model.display_short().to_string());
+                            cfg.model_ips.insert(telem.scope_model.display_short().to_string(), clean);
+                            cfg.save();
+                        }
+                    }
 
                     if state.is_discovering {
                         ui.add_enabled(
@@ -332,6 +353,9 @@ impl TelescopeView {
                     let mut sim = telem.is_simulation;
                     if ui.checkbox(&mut sim, crate::i18n::tr("🎮 Simulaatio")).on_hover_text(crate::i18n::tr("Kokeile ohjausta ja karttaa ilman kaukoputkea")).changed() {
                         client.set_simulation(sim);
+                        let mut cfg = TelescopeConfig::load();
+                        cfg.is_simulation = sim;
+                        cfg.save();
                     }
 
                     let mut auto_reconn = telem.auto_reconnect_enabled;
@@ -341,6 +365,9 @@ impl TelescopeView {
                         .changed()
                     {
                         client.set_auto_reconnect(auto_reconn);
+                        let mut cfg = TelescopeConfig::load();
+                        cfg.auto_reconnect = auto_reconn;
+                        cfg.save();
                     }
                     if telem.state == SeestarState::Reconnecting {
                         ui.label(
@@ -833,6 +860,17 @@ impl TelescopeView {
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys"));
                         });
                     if prev_model != state.mosaic_config.scope_model {
+                        let new_model = state.mosaic_config.scope_model;
+                        client.set_model(new_model);
+                        let mut cfg = TelescopeConfig::load();
+                        let target_ip = cfg.get_ip_for_model(new_model);
+                        state.seestar_ip = target_ip.clone();
+                        cfg.last_ip = target_ip.clone();
+                        cfg.scope_model = Some(new_model.display_short().to_string());
+                        cfg.model_ips.insert(new_model.display_short().to_string(), target_ip);
+                        cfg.save();
+
+                        ingest_mgr.set_model_source_path(new_model);
                         state.recompute_mosaic();
                     }
                 });

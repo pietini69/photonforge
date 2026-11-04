@@ -114,26 +114,26 @@ pub struct SeestarTelemetry {
 impl Default for SeestarTelemetry {
     fn default() -> Self {
         Self {
-            connected: true,
-            is_simulation: true, // Default to simulation mode so user can explore right away
-            ip_address: "192.168.110.1".to_string(), // Default Seestar AP IP or station IP
-            scope_model: crate::telescope::mosaic::TelescopeModel::SeestarS50,
-            protocol: crate::telescope::mosaic::TelescopeProtocol::Seestar,
-            port: 4700,
-            state: SeestarState::Idle,
-            battery_pct: 88,
-            temp_c: 12.5,
-            current_ra: 3.79,   // Near M45
-            current_dec: 24.11,
-            current_alt: 45.0,
-            current_az: 180.0,
-            target_name: "M45 Plejadit".to_string(),
-            target_ra: 3.79,
-            target_dec: 24.11,
+            connected: false,
+            is_simulation: false, // Default is OFF
+            ip_address: "seestar.local".to_string(),
+            scope_model: crate::telescope::mosaic::TelescopeModel::SeestarS30,
+            protocol: crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca,
+            port: 32323,
+            state: SeestarState::Disconnected,
+            battery_pct: 100,
+            temp_c: 0.0,
+            current_ra: 0.0,
+            current_dec: 0.0,
+            current_alt: 0.0,
+            current_az: 0.0,
+            target_name: String::new(),
+            target_ra: 0.0,
+            target_dec: 0.0,
             stacked_frames: 0,
             total_stack_seconds: 0,
             lp_filter_active: false,
-            last_log_message: "Kaukoputkiohjain valmiina (Simulaatiotila).".to_string(),
+            last_log_message: "Kaukoputkiohjain valmiina.".to_string(),
             auto_reconnect_enabled: true,
             reconnect_attempts: 0,
             max_reconnect_attempts: 15,
@@ -245,7 +245,27 @@ impl Default for SeestarClient {
 
 impl SeestarClient {
     pub fn new() -> Self {
-        let telemetry = Arc::new(Mutex::new(SeestarTelemetry::default()));
+        let mut default_telem = SeestarTelemetry::default();
+        let cfg = crate::telescope::discovery::TelescopeConfig::load();
+        let model = cfg.get_model();
+        let ip = cfg.get_ip_for_model(model);
+        default_telem.scope_model = model;
+        default_telem.protocol = model.protocol();
+        default_telem.port = model.default_port();
+        default_telem.ip_address = ip;
+        default_telem.is_simulation = cfg.is_simulation;
+        default_telem.auto_reconnect_enabled = cfg.auto_reconnect;
+        if cfg.is_simulation {
+            default_telem.connected = true;
+            default_telem.state = SeestarState::Idle;
+            default_telem.last_log_message = "Simulaatiotila aktivoitu. Kaukoputki virtuaalisesti valmiina!".to_string();
+        } else {
+            default_telem.connected = false;
+            default_telem.state = SeestarState::Disconnected;
+            default_telem.last_log_message = "Kaukoputkiohjain valmiina.".to_string();
+        }
+
+        let telemetry = Arc::new(Mutex::new(default_telem));
         let stop_signal = Arc::new(AtomicBool::new(false));
         let (command_tx, command_rx) = std::sync::mpsc::channel();
 

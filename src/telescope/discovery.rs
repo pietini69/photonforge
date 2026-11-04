@@ -1,25 +1,59 @@
+use crate::telescope::mosaic::TelescopeModel;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream, ToSocketAddrs, UdpSocket};
 use std::path::PathBuf;
 use std::time::Duration;
+
+fn default_auto_reconnect() -> bool {
+    true
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TelescopeConfig {
     pub last_ip: String,
     pub scope_model: Option<String>,
+    #[serde(default)]
+    pub is_simulation: bool,
+    #[serde(default = "default_auto_reconnect")]
+    pub auto_reconnect: bool,
+    #[serde(default)]
+    pub model_ips: HashMap<String, String>,
 }
 
 impl Default for TelescopeConfig {
     fn default() -> Self {
         Self {
             last_ip: "seestar.local".to_string(),
-            scope_model: Some("ZWO Seestar S-30".to_string()),
+            scope_model: Some("Seestar S-30 (2.1° × 1.2°)".to_string()),
+            is_simulation: false, // Default is OFF
+            auto_reconnect: true,
+            model_ips: HashMap::new(),
         }
     }
 }
 
 impl TelescopeConfig {
+    pub fn get_model(&self) -> TelescopeModel {
+        self.scope_model
+            .as_deref()
+            .and_then(TelescopeModel::from_name_or_short)
+            .unwrap_or(TelescopeModel::SeestarS30)
+    }
+
+    pub fn get_ip_for_model(&self, model: TelescopeModel) -> String {
+        if let Some(ip) = self.model_ips.get(model.display_short()) {
+            if !ip.trim().is_empty() {
+                return ip.clone();
+            }
+        }
+        if self.get_model() == model && !self.last_ip.trim().is_empty() {
+            return self.last_ip.clone();
+        }
+        model.default_ip().to_string()
+    }
+
     pub fn config_path() -> Option<PathBuf> {
         let base_dir = if let Some(home) = std::env::var_os("HOME") {
             PathBuf::from(home).join(".config").join("photon_forge")
@@ -135,14 +169,22 @@ mod tests {
 
     #[test]
     fn test_telescope_config_roundtrip() {
+        let mut model_ips = HashMap::new();
+        model_ips.insert("Seestar S-30 (2.1° × 1.2°)".to_string(), "192.168.68.77".to_string());
         let cfg = TelescopeConfig {
             last_ip: "192.168.68.77".to_string(),
             scope_model: Some("ZWO Seestar S-30".to_string()),
+            is_simulation: false,
+            auto_reconnect: true,
+            model_ips,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let loaded: TelescopeConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.last_ip, "192.168.68.77");
         assert_eq!(loaded.scope_model.as_deref(), Some("ZWO Seestar S-30"));
+        assert!(!loaded.is_simulation);
+        assert_eq!(loaded.get_model(), TelescopeModel::SeestarS30);
+        assert_eq!(loaded.get_ip_for_model(TelescopeModel::SeestarS30), "192.168.68.77");
     }
 
     #[test]

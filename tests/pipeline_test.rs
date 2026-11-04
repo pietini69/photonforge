@@ -902,6 +902,8 @@ fn test_telescope_and_star_chart() {
 
     // 5. Seestar S-30 Client Simulation
     let client = Arc::new(SeestarClient::new());
+    client.set_simulation(true);
+    std::thread::sleep(std::time::Duration::from_millis(50));
     let telem = client.get_telemetry();
     assert!(telem.is_simulation);
     assert_eq!(telem.state, SeestarState::Idle);
@@ -1421,6 +1423,8 @@ fn test_night_automation_dither_autofocus_and_reconnect() {
     use std::time::Duration;
 
     let client = SeestarClient::new();
+    client.set_simulation(true);
+    std::thread::sleep(Duration::from_millis(50));
     let telem0 = client.get_telemetry();
     assert!(telem0.is_simulation);
     assert!(telem0.auto_reconnect_enabled);

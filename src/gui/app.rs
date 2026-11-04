@@ -305,7 +305,11 @@ impl Default for PhotonForgeApp {
 
             seestar_client: Arc::new(SeestarClient::new()),
             night_sequencer: Arc::new(NightSequencer::new()),
-            live_ingest,
+            live_ingest: {
+                let cfg = crate::telescope::discovery::TelescopeConfig::load();
+                live_ingest.set_model_source_path(cfg.get_model());
+                live_ingest
+            },
             live_stacker,
             live_image_viewer: ImageViewer::default(),
             live_stack_counter: 0,
