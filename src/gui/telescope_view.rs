@@ -177,7 +177,9 @@ impl TelescopeView {
                             ui.separator();
                             ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
                             ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
                             ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
 
                             ui.separator();
                             ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
@@ -636,7 +638,9 @@ impl TelescopeView {
                             ui.separator();
                             ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
 
                             ui.separator();
                             ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
