@@ -1,0 +1,17 @@
+# Changelog
+
+All notable changes to **PhotonForge** are documented in this file.
+
+## [1.0.0] - 2026-11-04
+
+### Added
+- **Bilingual User Interface (`🇬🇧 EN` / `🇫🇮 FI`):** Instant 1-click language switching in the top toolbar between English and Finnish.
+- **Photometric & Spectrophotometric Color Calibration (`PCC` / `SPCC`):** Automatic white balance and channel gain calibration using unsaturated field star photometry, Planckian locus B-V temperature modeling, sensor QE profiles (Sony IMX462, IMX585, IMX571, IMX533), and filter transmission curves (Broadband UV/IR Cut, Dual-Band Ha/OIII, SII/OIII).
+- **WCS Plate Solver & Celestial Annotation Overlay:** Built-in TAN gnomonic WCS solver with non-destructive canvas overlays for RA/Dec coordinate grids, Messier/NGC/IC catalog objects, identified stars, and North/East compass rose.
+- **Multi-Panel Mosaic Stitcher & Planner:** Automatic star registration across overlapping mosaic panels with photometric background equalization and cosine seam feathering.
+- **ZWO Seestar S50 / S30 Desktop Control & All-Night Sequencer:** Direct Wi-Fi TCP telescope control, interactive 360° star chart, tonight's altitude curve, automated multi-target night scheduler with Auto-Focus, Dithering, Dual-Band LP filter control, Wi-Fi auto-reconnect watchdog, and SMB live sub-frame ingestion.
+- **Real-Time EAA Live Stacking Engine:** Live folder monitoring with automatic CFA debayering, sub-pixel star alignment, outlier rejection, and live Auto-STF stretch.
+- **Narrowband & Broadband Channel Combiner:** One-click SHO (Hubble), HOO (Bicolor), HSO, and LRGB combination with automatic sub-pixel alignment and Linear Fit background matching.
+- **SyQon Neural AI & Built-in Multi-Scale Wavelet Suite:** Support for Axiom (Starless separation), Parallax (PSF deconvolution & star aberration fix), Prism (deep denoise), and Deep Gradient extraction, backed by a zero-dependency pure-Rust wavelet engine.
+- **Interactive Curves, Arcsinh Stretch, ABE & SCNR:** PCHIP spline curves (`RGB, R, G, B, S`), color-preserving Arcsinh stretch, 2D polynomial Automatic Background Extraction (ABE), SCNR green cast removal, Dual-Band Ha/[OIII] boost, Reflection Nebula boost, and Morphological Star Reduction.
+- **Native File Support:** Pure-Rust FITS (`8, 16, 32, -32, -64`), PixInsight `.xisf` read/write, and 8/16-bit TIFF, PNG, and JPEG.

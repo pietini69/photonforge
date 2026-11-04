@@ -1,0 +1,11 @@
+/target/
+/dist/
+*.DS_Store
+*.log
+*.fits
+*.fit
+*.xisf
+*.tif
+*.tiff
+entities.json
+mempalace.yaml
