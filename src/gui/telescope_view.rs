@@ -193,7 +193,7 @@ impl TelescopeView {
                             ui.separator();
                             ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
                             ui.selectable_value(&mut current_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys (Custom FOV)"));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys"));
                         });
                     if current_model != telem.scope_model {
                         client.set_model(current_model);
@@ -345,7 +345,7 @@ impl TelescopeView {
                         client.start_stacking();
                     }
 
-                    if ui.button(crate::i18n::tr("🔍 Tarkenna")).on_hover_text(crate::i18n::tr("Suorita Seestarin automaattitarkennus (Auto-Focus)")).clicked() {
+                    if ui.button(crate::i18n::tr("🔍 Tarkenna")).on_hover_text(crate::i18n::tr("Suorita automaattinen tarkennus")).clicked() {
                         client.auto_focus();
                     }
 
@@ -654,7 +654,7 @@ impl TelescopeView {
                             ui.separator();
                             ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys (Custom FOV)"));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys"));
                         });
                     if prev_model != state.mosaic_config.scope_model {
                         state.recompute_mosaic();
@@ -832,7 +832,7 @@ impl TelescopeView {
 
                 // Night Automation Settings (Auto-Focus, Dithering & Connection Guard)
                 ui.collapsing(
-                    RichText::new(crate::i18n::tr("⚙ Yöajon automatiikka (AF, Dither & Vahti)"))
+                    RichText::new(crate::i18n::tr("⚙ Yöajon automatiikka"))
                         .small()
                         .strong()
                         .color(Color32::from_rgb(150, 220, 255)),
@@ -876,7 +876,7 @@ impl TelescopeView {
 
                         // 2. Dithering
                         dither_changed |= ui
-                            .checkbox(&mut dither_cfg.enabled, crate::i18n::tr("🔀 Ditheröinti (kohinanpoisto)"))
+                            .checkbox(&mut dither_cfg.enabled, crate::i18n::tr("🔀 Ditheröinti"))
                             .on_hover_text(crate::i18n::tr("Siirtää kuvakenttää muutaman pikselin valotusten välillä kuumien pikselien ja juovien poistamiseksi"))
                             .changed();
                         if dither_cfg.enabled {
@@ -892,7 +892,7 @@ impl TelescopeView {
                                         .changed();
                                 });
                                 ui.horizontal(|ui| {
-                                    ui.label(crate::i18n::tr("Asettuminen (Settle):"));
+                                    ui.label(crate::i18n::tr("Asettumisaika:"));
                                     dither_changed |= ui
                                         .add(egui::DragValue::new(&mut dither_cfg.settle_seconds).range(1..=15).suffix(" s"))
                                         .changed();
@@ -904,7 +904,7 @@ impl TelescopeView {
 
                         // 3. Connection Guard
                         guard_changed |= ui
-                            .checkbox(&mut conn_guard.auto_reconnect, crate::i18n::tr("🛡 Yhteyskatkoksen sieto (Auto-Reconnect)"))
+                            .checkbox(&mut conn_guard.auto_reconnect, crate::i18n::tr("🛡 Yhteyskatkoksen sieto"))
                             .on_hover_text(crate::i18n::tr("Pitää yösekvenssin hengissä Wi-Fi-katkosten yli ja täsmäyttää tilan yhteyden palautuessa"))
                             .changed();
                         if conn_guard.auto_reconnect {
@@ -1022,7 +1022,7 @@ impl TelescopeView {
 
                 // Top Header Bar
                 ui.horizontal(|ui| {
-                    ui.heading(RichText::new(crate::i18n::tr("📅 Yösekvensseri (Automated Night Scheduler)")).color(Color32::from_rgb(255, 200, 80)).strong());
+                    ui.heading(RichText::new(crate::i18n::tr("📅 Yösekvensseri")).color(Color32::from_rgb(255, 200, 80)).strong());
                     ui.separator();
                     if seq_state.is_running {
                         ui.label(RichText::new(crate::i18n::tr("● KÄYNNISSÄ")).color(Color32::from_rgb(80, 255, 120)).strong());
@@ -1080,7 +1080,7 @@ impl TelescopeView {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
                     ui.label(
-                        RichText::new(crate::i18n::tr("⚙ Yöajon automatiikka & vikasietoisuus (Auto-Focus, Dithering & Yhteysvahti)"))
+                        RichText::new(crate::i18n::tr("⚙ Yöajon automatiikka ja vikasietoisuus"))
                             .strong()
                             .color(Color32::from_rgb(140, 215, 255)),
                     );
@@ -1135,7 +1135,7 @@ impl TelescopeView {
                             dither_changed |= ui
                                 .checkbox(
                                     &mut dither_cfg.enabled,
-                                    RichText::new(crate::i18n::tr("🔀 Ditheröinti (Mikrosiirto)")).strong().color(Color32::from_rgb(195, 155, 255)),
+                                    RichText::new(crate::i18n::tr("🔀 Ditheröinti")).strong().color(Color32::from_rgb(195, 155, 255)),
                                 )
                                 .changed();
                             ui.horizontal(|ui| {
@@ -1151,7 +1151,7 @@ impl TelescopeView {
                                     .changed();
                             });
                             ui.horizontal(|ui| {
-                                ui.label(crate::i18n::tr("Asettumisaika (Settle):"));
+                                ui.label(crate::i18n::tr("Asettumisaika:"));
                                 dither_changed |= ui
                                     .add(egui::DragValue::new(&mut dither_cfg.settle_seconds).range(1..=15).suffix(" s"))
                                     .changed();
@@ -1213,7 +1213,7 @@ impl TelescopeView {
                 ui.add_space(8.0);
 
                 // Target Sequence Table / Cards
-                ui.heading(RichText::new(crate::i18n::tr("Kuvauslista (Queue)")).size(16.0));
+                ui.heading(RichText::new(crate::i18n::tr("Kuvauslista")).size(16.0));
 
                 if seq_state.targets.is_empty() {
                     ui.group(|ui| {
@@ -1298,7 +1298,7 @@ impl TelescopeView {
 
                 // Sequencer Execution Logs
                 if !seq_state.logs.is_empty() {
-                    ui.collapsing(RichText::new(crate::i18n::tr("📜 Lokitapahtumat (Logs)")).size(14.0), |ui| {
+                    ui.collapsing(RichText::new(crate::i18n::tr("📜 Lokitapahtumat")).size(14.0), |ui| {
                         egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
                             for log in seq_state.logs.iter().rev().take(20) {
                                 ui.label(RichText::new(log).small().color(Color32::from_rgb(170, 180, 200)));
@@ -1326,7 +1326,7 @@ impl TelescopeView {
 
         // Top view bar
         ui.horizontal(|ui| {
-            ui.heading(RichText::new(crate::i18n::tr("🌌 Interaktiivinen tähtikartta (Suomen taivas)")).color(Color32::from_rgb(80, 200, 255)).strong());
+            ui.heading(RichText::new(crate::i18n::tr("🌌 Interaktiivinen tähtikartta")).color(Color32::from_rgb(80, 200, 255)).strong());
             ui.separator();
             ui.label(format!("Sijainti: {:.2}° N, {:.2}° E | UTC: {}", lat, lon, now_utc.format("%H:%M:%S")));
 

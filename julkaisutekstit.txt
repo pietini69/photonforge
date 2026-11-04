@@ -1,0 +1,201 @@
+================================================================================
+PHOTONFORGE v1.0.0 - JULKAISUTEKSTIT FOORUMEILLE JA YHTEISÖIHIN
+================================================================================
+Kaikki tekstit ovat rentoja, suoria ja ilman myyntipuheita tai emojeja.
+Kunkin osion alussa on suora linkki kyseiseen yhteisöön.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. REDDIT: r/seestar
+--------------------------------------------------------------------------------
+Sivusto: https://www.reddit.com/r/seestar/
+
+Otsikko:
+Put together a free desktop app for Seestar / smart scopes (Mac, Windows, Linux) - stacks, aligns mosaics, and runs overnight sequences
+
+Teksti:
+Hey folks,
+
+Like a lot of you, I've really enjoyed using my Seestar, but I always felt something was missing on the computer side. I wanted an easy way to plan multi-target sessions, control the scope from my desk, and stack the raw FITS frames without having to juggle four different heavy programs or pay hundreds for software licenses.
+
+I ended up writing a native desktop app called PhotonForge in Rust. It's completely free, lightweight (around 10 megabytes), and starts up in less than a second.
+
+What it currently does:
+- Controls the telescope over local Wi-Fi / network (targets, altitude planning, live framing).
+- Night automation: dither, re-focus checks, and running sequences while you sleep.
+- Stacking and mosaic stitching: aligns frames (correcting field rotation from alt-az mounts), handles sigma-clipping, drizzle, and blends mosaic panels smoothly.
+- Post-processing: basic background extraction (gradient removal), star color calibration, curves, and star reduction.
+- Saves and loads FITS, 16-bit TIFF, XISF, and PNG.
+- Supports Seestar (S50, S30 and the new Pro models) as well as DwarfLab (Dwarf 3, Dwarf Mini, Dwarf II) and custom scopes via ASCOM Alpaca.
+
+If anyone wants to try it out on their data or use it for planning:
+GitHub (direct downloads): https://github.com/pietini69/photonforge/releases/latest
+Gumroad (free, name your price $0): https://shop.pietiniart.com/l/photonforge
+
+It's an ongoing project, so if you run into any quirks or have ideas for things you'd like to see added, let me know. Hope someone finds it useful.
+
+
+
+--------------------------------------------------------------------------------
+2. REDDIT: r/dwarflab
+--------------------------------------------------------------------------------
+Sivusto: https://www.reddit.com/r/dwarflab/
+
+Otsikko:
+Built a free native desktop app for Dwarf 3 / Dwarf II / Mini (Mac, Win, Linux) - mosaic planning, stacking and post-processing
+
+Teksti:
+Hey everyone,
+
+I've been working on a lightweight desktop app called PhotonForge for processing smart telescope images and wanted to share it here in case anyone finds it handy.
+
+The idea was to have something fast and self-contained that doesn't need Python environments or massive downloads, and covers the main post-processing steps in one place:
+
+- Connects to Dwarf devices over the local network (Dwarf 3, Dwarf II, Dwarf Mini) or just imports FITS folders directly.
+- Field of view and mosaic planning tailored to Dwarf sensor sizes.
+- Multi-threaded star alignment and stacking (corrects alt-az field rotation automatically, with sigma clipping and drizzle options).
+- Mosaic stitcher for blending multiple overlapping panels.
+- Linear processing: background gradient removal, photometric star calibration, curves, stretching, and noise/star reduction.
+- Runs natively on Mac (Apple Silicon and Intel), Windows, and Linux.
+
+The app is completely free on GitHub:
+Download: https://github.com/pietini69/photonforge/releases/latest
+Or Gumroad (free, enter $0): https://shop.pietiniart.com/l/photonforge
+
+Let me know if you test it on your Dwarf data and what you think. Feedback and suggestions are always welcome.
+
+
+
+--------------------------------------------------------------------------------
+3. REDDIT: r/AskAstrophotography
+--------------------------------------------------------------------------------
+Sivusto: https://www.reddit.com/r/AskAstrophotography/
+
+Otsikko:
+Built a lightweight native stacking & processing tool in Rust (Mac, Windows, Linux) - free to download
+
+Teksti:
+Hi all,
+
+Over the past few months I've been building a desktop tool called PhotonForge. I wanted something native and fast that opens in a second, handles the everyday 90% of stacking and processing, and doesn't cost an arm and a leg or require complex scripting.
+
+It's written in Rust and compiled as a standalone ~10 MB binary for macOS (Universal), Windows 64-bit, and Linux.
+
+Main features included so far:
+- Stacking: Sub-pixel star alignment (including rotation matching for alt-az data), sigma-clipping rejection, 2x drizzle, and batch filtering.
+- Mosaic stitcher: Automatic registration and seamless cosine blending for multi-panel mosaics.
+- Calibration & corrections: Auto-STF stretch, polynomial background gradient removal (ABE), SCNR, and photometric star color calibration (SPCC/PCC).
+- Narrowband & color: SHO / HOO / LRGB channel combiner, arcsinh stretching, custom spline curves, and star reduction.
+- Built-in plate solver with catalog annotations (Messier, NGC, IC).
+- Smart telescope tools: Wi-Fi connection, mosaic planner, and night sequencer for Seestar and DwarfLab scopes.
+- File formats: Reads and writes 16/32-bit FITS, PixInsight .xisf, 16-bit TIFF, and PNG.
+
+It is completely free (freeware / open source):
+GitHub releases: https://github.com/pietini69/photonforge/releases/latest
+Gumroad: https://shop.pietiniart.com/l/photonforge
+
+Happy to hear any constructive thoughts or bug reports if you decide to take it for a spin on your subs.
+
+
+
+--------------------------------------------------------------------------------
+4. CLOUDY NIGHTS: Smart Telescopes & Astronomy Software
+--------------------------------------------------------------------------------
+Sivusto 1 (Smart Telescopes): https://www.cloudynights.com/forum/80-smart-telescopes/
+Sivusto 2 (Astronomy Software): https://www.cloudynights.com/forum/13-astronomy-software-computers/
+
+Otsikko:
+PhotonForge - Free desktop software for Seestar and Dwarf scopes (Sequencer, Mosaic Stitching, Stacking & Processing)
+
+Teksti:
+Hello everyone,
+
+I wanted to share a free desktop utility I've put together called PhotonForge. Many of us using smart telescopes like the Seestar S50/S30 or Dwarf 3 appreciate the portability, but once it comes to managing multi-target sessions or processing the captured raw files on a PC or Mac, the options can be either too fragmented or unnecessarily expensive.
+
+PhotonForge is an all-in-one native program for Mac, Windows, and Linux that handles both sides:
+
+1. On the mount control side:
+- Star map and altitude planner for your coordinates.
+- All-night automated sequencer (target queues, auto-dither, interval refocusing, park at end).
+- Visual mosaic framing helper.
+- Live stacking directly from the device over network share.
+
+2. On the processing side:
+- Multi-star alignment with alt-az field rotation compensation.
+- Multi-panel mosaic stitcher with background matching.
+- 2x Drizzle super-resolution and sigma clipping.
+- Background extraction, photometric star color calibration, curves, and star reduction.
+- Native support for FITS, XISF, and 16-bit TIFF.
+
+It's a small download (about 10 MB) with no installation dependencies.
+
+You can grab it here:
+GitHub: https://github.com/pietini69/photonforge/releases/latest
+Gumroad (free): https://shop.pietiniart.com/l/photonforge
+
+Feedback from fellow smart scope users is very welcome.
+
+
+
+--------------------------------------------------------------------------------
+5. STARGAZERS LOUNGE: Smart Telescopes & Astronomy Software
+--------------------------------------------------------------------------------
+Sivusto 1 (Smart Telescopes): https://stargazerslounge.com/forum/139-smart-telescopes/
+Sivusto 2 (Software): https://stargazerslounge.com/forum/42-software/
+
+Otsikko:
+PhotonForge - Free standalone stacking, processing and smart scope utility (Mac, Windows, Linux)
+
+Teksti:
+Hi all,
+
+Just wanted to post about a personal project that might be helpful to other members here. I built a native desktop application in Rust called PhotonForge to help with stacking and basic processing, especially for data coming from smart telescopes (Seestar, Dwarf) as well as regular astrophotography setups.
+
+I aimed for something lightweight, fast, and simple to use without needing to launch heavy processing suites for routine jobs.
+
+Features at a glance:
+- Standalone app for macOS (Intel & Apple Silicon), Windows, and Linux. No extra frameworks or Python required.
+- Stacking with star registration, alt-az field derotation, sigma clipping, and 2x drizzle.
+- Dedicated multi-panel mosaic stitcher with smooth blending.
+- Gradient removal (background extraction), photometric color calibration (SPCC), stretching tools, and narrowband combiner.
+- Control & sequencer features for ZWO Seestar and DwarfLab scopes over local Wi-Fi.
+- Supports FITS, XISF, 16-bit TIFF, and PNG.
+
+It's freely available to download:
+GitHub: https://github.com/pietini69/photonforge/releases/latest
+Gumroad ($0): https://shop.pietiniart.com/l/photonforge
+
+Hope it comes in handy for your imaging sessions. Any feedback is appreciated.
+
+
+
+--------------------------------------------------------------------------------
+6. SUOMALAISET YHTEISÖT (Avaruus.fi / Facebook Tähtikuvaus & Seestar Suomi)
+--------------------------------------------------------------------------------
+Sivusto 1 (Ursan Foorumi): https://foorumi.avaruus.fi/
+Sivusto 2 (Facebook Tähtikuvaus): https://www.facebook.com/groups/tahtikuvaus/
+Sivusto 3 (Facebook Seestar Suomi): https://www.facebook.com/groups/seestarsuomi/
+
+Otsikko:
+Ilmainen suomenkielinen tähtikuvauksen pinoamis- ja käsittelyohjelma PhotonForge (Mac, Windows, Linux)
+
+Teksti:
+Moi kaikille,
+
+Olen harrastuksen ohessa koodannut omaan käyttöön tähtikuvauksen pinoamis- ja jälkikäsittelyohjelmaa nimeltä PhotonForge, ja ajattelin laittaa sen jakoon jos siitä olisi iloa muillekin harrastajille.
+
+Ohjelma on tehty Rustilla, joten se aukeaa heti ja vie tilaa vain noin 10 megatavua ilman mitään raskaita asennushässäköitä. Käyttöliittymä on täysin suomenkielinen (yläkulmasta saa halutessaan vaihdettua myös englanniksi).
+
+Mitä ohjelmalla voi tehdä:
+- Pinoaminen: Tähtien automaattikohdistus (korjaa myös alt-az-jalustojen kentänkiertymän), sigma-clipping satelliittiviivojen poistoon ja 2x Drizzle.
+- Mosaiikkien yhdistäminen: Liittää moniruutuiset mosaiikit yhteen automaattisesti taustan tasauksella ja saumojen pehmennyksellä.
+- Jälkikäsittely: Taustagradientin poisto (ABE), fotometrinen tähtien värikalibrointi (SPCC/PCC), venytykset, käyrät, kapeakaistan kanavayhdistely (SHO/HOO) sekä tähtien pienennys.
+- Älyputkien ohjaus: Toimii myös suoraan Seestarin (S50, S30 ja Pro-mallit) ja DwarfLabin (Dwarf 3, Mini, Dwarf II) kanssa lähiverkossa (tähtikartta, kuvausjonot yöksi, automaattitarkennuksen tarkistus, live-pinoaminen).
+- Tiedostot: Tukee FITS-, PixInsight .xisf-, 16-bittisiä TIFF- ja PNG-tiedostoja.
+
+Ohjelma on täysin ilmainen:
+GitHub (suorat asennuspaketit): https://github.com/pietini69/photonforge/releases/latest
+Gumroad (ilmainen, syötä hinnaksi 0): https://shop.pietiniart.com/l/photonforge
+
+Testailkaa vapaasti omilla kuvilla ja laittakaa viestiä, jos tulee vastaan bugeja tai ideoita jatkokehitykseen.

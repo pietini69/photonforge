@@ -221,10 +221,9 @@ impl ImageViewer {
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
-                crate::i18n::tr("🌌 Ei kuvaa ladattuna
-Avaa FITS-, TIFF- tai PNG-kuva yläpalkista"),
-                egui::FontId::proportional(18.0),
-                Color32::from_rgb(120, 130, 150),
+                crate::i18n::tr("Ei kuvaa ladattuna. Avaa kuvatiedostoja yläpalkista tai raahaa ne tähän."),
+                egui::FontId::proportional(16.0),
+                Color32::from_rgb(130, 145, 170),
             );
             return (None, CropAction::None);
         };

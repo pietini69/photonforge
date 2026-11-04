@@ -24,21 +24,41 @@ pub enum SeestarState {
 }
 
 impl SeestarState {
-    pub fn display_fi(&self) -> &'static str {
-        match self {
-            SeestarState::Disconnected => "Ei yhteyttä",
-            SeestarState::Connecting => "Yhdistetään...",
-            SeestarState::Reconnecting => "Palautetaan yhteyttä...",
-            SeestarState::Idle => "Valmiustilassa (Idle)",
-            SeestarState::Slewing => "Kääntyy kohteeseen (Slewing)...",
-            SeestarState::Solving => "Kenttätunnistus (Plate Solving)...",
-            SeestarState::Focusing => "Tarkentaa (Auto-Focus)...",
-            SeestarState::Tracking => "Seuraa kohdetta (Tracking)",
-            SeestarState::Stacking => "Valottaa & pinoaa (Stacking)",
-            SeestarState::Dithering => "Ditheröi (Mikrosiirto)...",
-            SeestarState::Parking => "Ajaa parkkiin (Parking)...",
-            SeestarState::Parked => "Parkissa (Parked)",
+    pub fn display_name(&self) -> &'static str {
+        match crate::i18n::current_lang() {
+            crate::i18n::UiLang::Finnish => match self {
+                SeestarState::Disconnected => "Ei yhteyttä",
+                SeestarState::Connecting => "Yhdistetään...",
+                SeestarState::Reconnecting => "Palautetaan yhteyttä...",
+                SeestarState::Idle => "Valmiustilassa",
+                SeestarState::Slewing => "Kääntyy kohteeseen...",
+                SeestarState::Solving => "Kenttätunnistus...",
+                SeestarState::Focusing => "Tarkentaa...",
+                SeestarState::Tracking => "Seuraa kohdetta",
+                SeestarState::Stacking => "Valottaa & pinoaa",
+                SeestarState::Dithering => "Ditheröi...",
+                SeestarState::Parking => "Ajaa lepoasentoon...",
+                SeestarState::Parked => "Lepoasennossa",
+            },
+            crate::i18n::UiLang::English => match self {
+                SeestarState::Disconnected => "Disconnected",
+                SeestarState::Connecting => "Connecting...",
+                SeestarState::Reconnecting => "Reconnecting...",
+                SeestarState::Idle => "Idle",
+                SeestarState::Slewing => "Slewing...",
+                SeestarState::Solving => "Plate solving...",
+                SeestarState::Focusing => "Focusing...",
+                SeestarState::Tracking => "Tracking",
+                SeestarState::Stacking => "Exposing & stacking",
+                SeestarState::Dithering => "Dithering...",
+                SeestarState::Parking => "Parking...",
+                SeestarState::Parked => "Parked",
+            },
         }
+    }
+
+    pub fn display_fi(&self) -> &'static str {
+        self.display_name()
     }
 
     pub fn color_rgb(&self) -> (u8, u8, u8) {
