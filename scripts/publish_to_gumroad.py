@@ -21,7 +21,7 @@ DIST_DIR = os.path.join(PROJECT_DIR, "dist")
 ASSETS_DIR = os.path.join(DIST_DIR, "gumroad_assets")
 TRACKER_FILE = "/Volumes/Dataa/EtsyTuotteet/gumroad_published.json"
 
-PRODUCT_NAME = "PhotonForge – ZWO Seestar Control & 32-bit Astrophotography Suite (macOS, Windows, Linux)"
+PRODUCT_NAME = "PhotonForge – Smart Telescope Control & 32-bit Astrophotography Suite (macOS, Windows, Linux)"
 CUSTOM_PERMALINK = "photonforge"
 CURRENCY = "eur"
 PRICE = "0"  # Pay What You Want (0€+)
@@ -31,6 +31,10 @@ TAGS = [
     "astrophotography",
     "seestar",
     "zwo seestar",
+    "dwarf 3",
+    "dwarflab",
+    "smart telescope",
+    "ascom",
     "fits",
     "xisf",
     "image stacking",
@@ -40,12 +44,12 @@ TAGS = [
     "linux"
 ]
 
-SUMMARY = "High-performance 32-bit astrophotography processing, sub-pixel star alignment, 2x Drizzle, mosaic stitching & direct ZWO Seestar S50/S30 desktop control with 360° Sky Atlas and All-Night Sequencer for macOS, Windows and Linux."
+SUMMARY = "High-performance 32-bit astrophotography processing, sub-pixel star alignment, 2x Drizzle, mosaic stitching & direct Smart Telescope control (ZWO Seestar S50/S50 Pro/S30/S30 Pro, DwarfLab DWARF 3/II, Vespera, Origin, ASCOM Alpaca) with 360° Sky Atlas and All-Night Sequencer for macOS, Windows and Linux."
 
 DESCRIPTION_HTML = """
-<h2>🔭 Meet PhotonForge v1.0.0: 32-Bit Astrophotography &amp; ZWO Seestar Desktop Suite</h2>
+<h2>🔭 Meet PhotonForge v1.0.0: 32-Bit Astrophotography &amp; Smart Telescope Desktop Suite</h2>
 <p>
-<strong>PhotonForge</strong> is a modern, blazing-fast 32-bit astrophotography post-processing suite and direct <strong>ZWO Seestar S50 / S30</strong> desktop control station written in 100% pure <strong>Rust</strong>. Built for deep-sky astrophotographers and smart telescope owners, PhotonForge combines real-time telescope control, an interactive 360° Sky Atlas, an automated all-night multi-target sequencer, and PixInsight/Siril-class 32-bit floating-point calibration, registration, stacking, mosaic stitching, and post-processing in a single ~10 MB native application — with <strong>no subscriptions and no bloat</strong>.
+<strong>PhotonForge</strong> is a modern, blazing-fast 32-bit astrophotography post-processing suite and direct <strong>Smart Telescope &amp; Mount</strong> desktop command station written in 100% pure <strong>Rust</strong>. Built for deep-sky astrophotographers and smart telescope owners, PhotonForge combines real-time telescope control, an interactive 360° Sky Atlas, an automated all-night multi-target sequencer, and PixInsight/Siril-class 32-bit floating-point calibration, registration, stacking, mosaic stitching, and post-processing in a single ~10 MB native application — with <strong>no subscriptions and no bloat</strong>.
 </p>
 <p>
 <strong>Free / Pay What You Want (0 €+):</strong> Download and use PhotonForge completely free, or support independent development with the price of a cup of coffee (3 € – 5 €)!<br>
@@ -56,7 +60,15 @@ DESCRIPTION_HTML = """
 
 <h3>⚡ Key Features in v1.0.0</h3>
 <ul>
-  <li><strong>📡 Direct ZWO Seestar S50 / S30 Desktop Control (Wi-Fi TCP/JSON-RPC + SMB):</strong> Connect directly from your Mac, Windows PC, or Linux desktop over Wi-Fi without an Android emulator. Includes live telemetry (RA/Dec, Alt/Az, sensor temp, battery, dew heater PWM, LP/IRCUT filter switch), variable-speed dual-axis Slewing Joystick, Autofocus trigger, and 1-Click Auto-Initialization.</li>
+  <li><strong>📡 Comprehensive Smart Telescope &amp; Mount Support:</strong>
+    <ul>
+      <li><strong>ZWO Seestar Family (S50, S50 Pro 4K, S30, S30 Pro 4K):</strong> Direct Wi-Fi TCP/JSON-RPC control, telemetry, slewing joystick, autofocus, dual-band filter toggle, and SMB sub-frame synchronization.</li>
+      <li><strong>DwarfLab Family (DWARF 3 4K &amp; DWARF II):</strong> Open API control, telemetry, autofocus, and live image ingestion.</li>
+      <li><strong>Vaonis Family (Vespera II 4K &amp; Vespera Pro 12.5 MP):</strong> Dedicated optics &amp; sensor FOV profiles with automated folder/FTP ingest live stacking.</li>
+      <li><strong>Celestron Origin RASA:</strong> Native 335mm f/2.2 widefield FOV profiling and plate-solved mosaic planning.</li>
+      <li><strong>ASCOM Alpaca (Universal REST):</strong> Cross-platform network control for Sky-Watcher, ZWO AM3/AM5, iOptron, OnStep, and custom telescope rigs.</li>
+    </ul>
+  </li>
   <li><strong>🌌 Interactive 360° Sky Atlas &amp; Tonight's Best Targets:</strong> Real-time stereographic sky dome with horizon obstructions, meridian line, and real-time altitude curves for 110+ Messier (M1–M110) and NGC/IC deep-sky objects.</li>
   <li><strong>🗓️ Automated All-Night Multi-Target Sequencer &amp; Visual Mosaic Planner:</strong> Queue multiple deep-sky targets for unattended overnight imaging with automatic GoTo, plate-solve verification, LP/IRCUT filter selection, autofocus, and exposure time allocation. Design custom <strong>N×M multi-panel mosaics</strong> visually on the sky map with adjustable overlap %.</li>
   <li><strong>🔴 Real-Time EAA Live Stacking &amp; Automatic SMB Sub-Frame Puller:</strong> Watch your deep-sky image build on your desktop screen as new sub-exposures arrive from the telescope, with real-time star registration and Auto-STF preview.</li>

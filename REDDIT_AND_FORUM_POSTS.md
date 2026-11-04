@@ -23,12 +23,14 @@
 
 ### 🔥 Kategoria A: Reddit (Suurin välitön liikenne)
 1. **`r/seestar`** *(TÄRKEIN TÄSMÄKANAVA!)*
-   - Seestar S50 / S30 -omistajat etsivät juuri nyt tietokoneohjelmaa, yösekvensseriä, mosaiikkien yhdistäjää ja helppoa FITS-pinoajaa.
-2. **`r/AskAstrophotography`** *(Erittäin aktiivinen, sallii ohjelmistotyökalujen esittelyn)*
+   - Seestar S50, S50 Pro, S30 ja S30 Pro -omistajat etsivät juuri nyt tietokoneohjelmaa, yösekvensseriä, mosaiikkien yhdistäjää ja helppoa FITS-pinoajaa.
+2. **`r/dwarflab`** *(DwarfLab DWARF 3 & DWARF II -yhteisö!)*
+   - DWARF 3 on uusi 4K-hitti, ja sen käyttäjillä ei ole virallista työpöytäsovellusta. PhotonForge tukee DWARF 3:a ja DWARF II:ta suoraan.
+3. **`r/AskAstrophotography`** *(Erittäin aktiivinen, sallii ohjelmistotyökalujen esittelyn)*
    - Täynnä aloittelijoita ja harrastajia, joille PixInsight (300 €) on liian kallis ja Siril liian monimutkainen.
-3. **`r/telescopes`** & **`r/astrophotography`**
+4. **`r/telescopes`** & **`r/astrophotography`**
    - Huom: tarkista `r/astrophotography`-säännöt (postaa mieluummin oikea PhotonForgella pinottu ja käsitelty kuva esim. M42 Orionin sumusta ja kerro kommenteissa / otsikossa, että käsittelit sen omalla ilmaisella Rust-ohjelmallasi!).
-4. **`r/rust`**
+5. **`r/rust`**
    - Rust-yhteisö rakastaa natiiveja `egui`-työpöytäsovelluksia, joissa on oikeaa tieteellistä laskentaa (FITS/XISF, WCS Plate Solving, SPCC fotometria, Rayon-rinnakkaislaskenta).
 
 ### 🔭 Kategoria B: Kansainväliset tähtikuvausfoorumit (Pitkäikäinen orgaaninen liikenne)

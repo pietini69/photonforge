@@ -195,11 +195,45 @@ impl LiveIngestManager {
         *cb = Some(Arc::new(callback));
     }
 
+    pub fn set_model_source_path(&self, model: crate::telescope::mosaic::TelescopeModel) {
+        let mut cfg = self.config.lock().unwrap();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/Shared".to_string());
+        match model {
+            crate::telescope::mosaic::TelescopeModel::SeestarS50
+            | crate::telescope::mosaic::TelescopeModel::SeestarS50Pro
+            | crate::telescope::mosaic::TelescopeModel::SeestarS30
+            | crate::telescope::mosaic::TelescopeModel::SeestarS30Pro => {
+                cfg.source_path = PathBuf::from("/Volumes/EMMC Images/MyWorks");
+                cfg.destination_path =
+                    PathBuf::from(&home).join("Pictures").join("PhotonForge_Seestar");
+            }
+            crate::telescope::mosaic::TelescopeModel::Dwarf3
+            | crate::telescope::mosaic::TelescopeModel::Dwarf2 => {
+                cfg.source_path = PathBuf::from("/Volumes/DWARF/FITS");
+                cfg.destination_path =
+                    PathBuf::from(&home).join("Pictures").join("PhotonForge_Dwarf");
+            }
+            crate::telescope::mosaic::TelescopeModel::Vespera2
+            | crate::telescope::mosaic::TelescopeModel::VesperaPro => {
+                cfg.source_path = PathBuf::from("/Volumes/Vespera");
+                cfg.destination_path =
+                    PathBuf::from(&home).join("Pictures").join("PhotonForge_Vespera");
+            }
+            _ => {
+                cfg.destination_path =
+                    PathBuf::from(&home).join("Pictures").join("PhotonForge_Telescope");
+            }
+        }
+    }
+
     pub fn open_seestar_smb(seestar_ip: &str) {
         let smb_url = format!("smb://{}/EMMC Images", seestar_ip);
-        let _ = std::process::Command::new("open")
-            .arg(&smb_url)
-            .spawn();
+        let _ = std::process::Command::new("open").arg(&smb_url).spawn();
+    }
+
+    #[allow(dead_code)]
+    pub fn open_share_url(url: &str) {
+        let _ = std::process::Command::new("open").arg(url).spawn();
     }
 }
 

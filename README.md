@@ -1,6 +1,6 @@
 # 🌌 PhotonForge v1.0.0 🦀⚡
 
-### The Blazingly Fast, Native Rust Astrophotography Stacking, Post-Processing & ZWO Seestar Desktop Suite for macOS, Windows & Linux
+### The Blazingly Fast, Native Rust Astrophotography Stacking, Post-Processing & Smart Telescope Desktop Suite for macOS, Windows & Linux
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-dea584.svg)](https://www.rust-lang.org/)
@@ -8,7 +8,9 @@
 [![Free Download on Gumroad](https://img.shields.io/badge/Gumroad-Free%20Download-orange.svg)](https://shop.pietiniart.com/l/photonforge)
 [![Buy Me A Coffee](https://img.shields.io/badge/☕%20Buy%20Me%20A%20Coffee-Donate-yellow.svg)](https://buymeacoffee.com/pnp69)
 
-**PhotonForge** is an ultra-fast, native desktop astrophotography processing, multi-threaded stacking, mosaic stitching, and **ZWO Seestar S50 / S30** smart telescope control platform written from scratch in pure **Rust** (`eframe` / `egui`, `rayon`).
+**PhotonForge** is an ultra-fast, native desktop astrophotography processing, multi-threaded stacking, mosaic stitching, and smart telescope command station written from scratch in pure **Rust** (`eframe` / `egui`, `rayon`).
+
+Supports **ZWO Seestar S50 / S50 Pro / S30 / S30 Pro**, **DwarfLab DWARF 3 / DWARF II**, **Vaonis Vespera II / Pro**, **Celestron Origin RASA**, and **ASCOM Alpaca (Universal REST Mount)**, plus custom telescopes and traditional astrophotography rigs.
 
 Part of the **PhotonCAM** software family, PhotonForge combines the core post-processing power of **PixInsight** and **Siril** with a native desktop command center for smart telescopes and traditional rigs — in a single **~10 MB native executable** that starts in under **0.2 seconds**.
 
@@ -57,10 +59,16 @@ Astrophotographers today often have to juggle 5–6 separate programs just to pr
 - **📈 Monotonic PCHIP Spline Curves & Arcsinh Stretch:** Interactive multi-channel (`RGB, R, G, B, Saturation`) spline curves with live preview, plus color-preserving **Arcsinh Stretch**, **Dual-Band Ha/[OIII] Boost**, **Reflection Nebula Blue/Cyan Boost**, **SCNR Green Removal**, and **Morphological Star Reduction**.
 - **✨ SyQon Neural AI & Built-in Wavelet Engine:** Seamless integration with free local SyQon AI models (**Axiom** Star Removal / Starless separation, **Parallax** PSF Deconvolution & Star Aberration Fix, **Prism** Deep Denoise, and **Deep Gradient** removal), plus a built-in pure-Rust À Trous wavelet fallback engine that works out-of-the-box with zero external dependencies.
 
-### 4. 🔭 Built-in ZWO Seestar S50 / S30 Desktop Command Center
+### 4. 🔭 Multi-Telescope Command Center (Seestar S50/S50 Pro/S30/S30 Pro, DWARF 3/II, Vespera, Origin & ASCOM Alpaca)
+- **Extensive Smart Telescope Profiles:**
+  - **ZWO Seestar Family:** S50 (250mm f/5), S50 Pro (260mm f/5.2 4K), S30 (150mm f/5), S30 Pro (160mm f/5.3 4K)
+  - **DwarfLab Family:** DWARF 3 (150mm f/4.3 4K), DWARF II (100mm f/4.2 4K)
+  - **Vaonis Family:** Vespera II (250mm f/5 4K), Vespera Pro (250mm f/5 12.5 MP)
+  - **Celestron:** Origin RASA (335mm f/2.2)
+  - **Universal / Custom:** ASCOM Alpaca (REST network mount) and custom telescope/sensor configuration.
 - **Interactive All-Sky Dome & Star Chart:** Real-time altitude/azimuth sky dome, tonight's visibility & altitude curve (18:00–06:00), and searchable Deep-Sky Catalog (Galaxies, Nebulae, Clusters).
 - **Automated All-Night Sequencer:** Queue multiple targets for the entire night with automatic meridian/horizon checks, scheduled **Auto-Focus** (by time interval or $\Delta T$ temperature drop), **Dithering**, **Dual-Band LP Filter** switching, **Wi-Fi Drop Watchdog (Auto-Reconnect)**, and automatic dawn parking.
-- **Interactive Mosaic Framing Planner:** Visually frame $1\times2$, $2\times1$, $2\times2$, $3\times2$, or $3\times3$ mosaics on the sky chart and send all panels directly to the night sequencer.
+- **Interactive Mosaic Framing Planner:** Visually frame $1\times2$, $2\times1$, $2\times2$, $3\times2$, or $3\times3$ mosaics with custom FOV and overlap % directly on the sky chart and send all panels to the night sequencer.
 - **1-Click Bilingual UI (`🇬🇧 EN` / `🇫🇮 FI`):** Switch the entire interface between English and Finnish at any time from the top toolbar.
 
 ---

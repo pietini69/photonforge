@@ -84,6 +84,9 @@ pub struct SeestarTelemetry {
     pub connected: bool,
     pub is_simulation: bool,
     pub ip_address: String,
+    pub scope_model: crate::telescope::mosaic::TelescopeModel,
+    pub protocol: crate::telescope::mosaic::TelescopeProtocol,
+    pub port: u16,
     pub state: SeestarState,
     pub battery_pct: u8,
     pub temp_c: f32,
@@ -114,6 +117,9 @@ impl Default for SeestarTelemetry {
             connected: true,
             is_simulation: true, // Default to simulation mode so user can explore right away
             ip_address: "192.168.110.1".to_string(), // Default Seestar AP IP or station IP
+            scope_model: crate::telescope::mosaic::TelescopeModel::SeestarS50,
+            protocol: crate::telescope::mosaic::TelescopeProtocol::Seestar,
+            port: 4700,
             state: SeestarState::Idle,
             battery_pct: 88,
             temp_c: 12.5,
@@ -127,7 +133,7 @@ impl Default for SeestarTelemetry {
             stacked_frames: 0,
             total_stack_seconds: 0,
             lp_filter_active: false,
-            last_log_message: "Seestar-ohjain valmiina (Simulaatiotila).".to_string(),
+            last_log_message: "Kaukoputkiohjain valmiina (Simulaatiotila).".to_string(),
             auto_reconnect_enabled: true,
             reconnect_attempts: 0,
             max_reconnect_attempts: 15,
@@ -151,6 +157,7 @@ enum SeestarCommand {
     Connect(String),
     Disconnect,
     SetSimulation(bool),
+    SetModel(crate::telescope::mosaic::TelescopeModel),
     GoTo {
         name: String,
         ra: f64,
@@ -201,6 +208,17 @@ impl SeestarClient {
                 // Handle commands
                 while let Ok(cmd) = command_rx.try_recv() {
                     match cmd {
+                        SeestarCommand::SetModel(model) => {
+                            let mut t = telem_clone.lock().unwrap();
+                            t.scope_model = model;
+                            t.protocol = model.protocol();
+                            t.port = model.default_port();
+                            t.last_log_message = format!(
+                                "Kaukoputkimalliksi valittu: {} ({})",
+                                model.display_short(),
+                                model.protocol().protocol_name()
+                            );
+                        }
                         SeestarCommand::Connect(ip) => {
                             user_disconnected = false;
                             next_reconnect_at = None;
@@ -208,31 +226,50 @@ impl SeestarClient {
                             t.ip_address = ip.clone();
                             t.state = SeestarState::Connecting;
                             t.reconnect_attempts = 0;
-                            t.last_log_message = format!("Yhdistetään Seestariin osoitteessa {}:4700...", ip);
+                            let port = t.port;
+                            let proto = t.protocol;
+                            let scope_name = t.scope_model.display_short();
+                            t.last_log_message = format!("Yhdistetään kohteeseen {} ({}:{})...", scope_name, ip, port);
                             let dither_cfg = t.dither_config;
                             drop(t);
 
                             // Attempt real TCP connection
-                            let addr_str = format!("{}:4700", ip);
+                            let addr_str = format!("{}:{}", ip, port);
                             if let Ok(addr) = addr_str.parse::<SocketAddr>() {
                                 match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
                                     Ok(mut stream) => {
                                         let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
                                         let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
 
-                                        // Push initial dither config to Seestar firmware
-                                        let dither_payload = serde_json::json!({
-                                            "id": 107,
-                                            "method": "set_setting",
-                                            "params": {
-                                                "dither": {
-                                                    "enabled": dither_cfg.enabled,
-                                                    "pix": dither_cfg.step_pixels,
-                                                    "interval": dither_cfg.interval_frames
-                                                }
+                                        match proto {
+                                            crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                                // Push initial dither config to Seestar firmware
+                                                let dither_payload = serde_json::json!({
+                                                    "id": 107,
+                                                    "method": "set_setting",
+                                                    "params": {
+                                                        "dither": {
+                                                            "enabled": dither_cfg.enabled,
+                                                            "pix": dither_cfg.step_pixels,
+                                                            "interval": dither_cfg.interval_frames
+                                                        }
+                                                    }
+                                                });
+                                                let _ = stream.write_all(format!("{}\r\n", dither_payload).as_bytes());
                                             }
-                                        });
-                                        let _ = stream.write_all(format!("{}\r\n", dither_payload).as_bytes());
+                                            crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                                let hello = serde_json::json!({
+                                                    "interface": 10001,
+                                                    "cmd": "connect"
+                                                });
+                                                let _ = stream.write_all(format!("{}\r\n", hello).as_bytes());
+                                            }
+                                            crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                                let req = format!("GET /api/v1/telescope/0/connected HTTP/1.1\r\nHost: {}\r\nUser-Agent: PhotonForge\r\nConnection: keep-alive\r\n\r\n", ip);
+                                                let _ = stream.write_all(req.as_bytes());
+                                            }
+                                            crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                        }
 
                                         active_stream = Some(stream);
 
@@ -240,13 +277,13 @@ impl SeestarClient {
                                         t.connected = true;
                                         t.is_simulation = false;
                                         t.state = SeestarState::Idle;
-                                        t.last_log_message = format!("Yhteys muodostettu Seestariin ({})!", ip);
+                                        t.last_log_message = format!("Yhteys muodostettu kohteeseen {} ({}:{})!", scope_name, ip, port);
                                     }
                                     Err(e) => {
                                         let mut t = telem_clone.lock().unwrap();
                                         t.connected = false;
                                         t.state = SeestarState::Disconnected;
-                                        t.last_log_message = format!("Yhteysvirhe: {}. Voit käyttää simulaatiotilaa.", e);
+                                        t.last_log_message = format!("Yhteysvirhe ({}): {}. Voit käyttää simulaatiotilaa.", scope_name, e);
                                     }
                                 }
                             }
@@ -291,18 +328,42 @@ impl SeestarClient {
                             if is_sim {
                                 slew_start = Some((Instant::now(), start_ra, start_dec, ra, dec));
                             } else if let Some(stream) = &mut active_stream {
-                                // Send Seestar JSON-RPC GoTo command
-                                let payload = serde_json::json!({
-                                    "id": 101,
-                                    "method": "iscope_start_view",
-                                    "params": {
-                                        "target_name": name,
-                                        "ra": ra,
-                                        "dec": dec
+                                let proto = { telem_clone.lock().unwrap().protocol };
+                                match proto {
+                                    crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                        let payload = serde_json::json!({
+                                            "id": 101,
+                                            "method": "iscope_start_view",
+                                            "params": {
+                                                "target_name": name,
+                                                "ra": ra,
+                                                "dec": dec
+                                            }
+                                        });
+                                        let msg = format!("{}\r\n", payload);
+                                        let _ = stream.write_all(msg.as_bytes());
                                     }
-                                });
-                                let msg = format!("{}\r\n", payload);
-                                let _ = stream.write_all(msg.as_bytes());
+                                    crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                        let payload = serde_json::json!({
+                                            "interface": 10005,
+                                            "cmd": "goto",
+                                            "target": name,
+                                            "ra": ra,
+                                            "dec": dec
+                                        });
+                                        let msg = format!("{}\r\n", payload);
+                                        let _ = stream.write_all(msg.as_bytes());
+                                    }
+                                    crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                        let body = format!("RightAscension={}&Declination={}&ClientID=1&ClientTransactionID=101", ra, dec);
+                                        let msg = format!(
+                                            "PUT /api/v1/telescope/0/slewtocoordinatesasync HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                                            body.len(), body
+                                        );
+                                        let _ = stream.write_all(msg.as_bytes());
+                                    }
+                                    crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                }
                             }
                         }
                         SeestarCommand::StartStacking => {
@@ -316,30 +377,52 @@ impl SeestarClient {
                             t.last_log_message = format!("Pinoaminen käynnissä kohteelle: {}!", t.target_name);
                             let is_sim = t.is_simulation;
                             let dither_cfg = t.dither_config;
+                            let proto = t.protocol;
                             drop(t);
                             stack_timer = Instant::now();
 
                             if !is_sim {
                                 if let Some(stream) = &mut active_stream {
-                                    let dither_payload = serde_json::json!({
-                                        "id": 107,
-                                        "method": "set_setting",
-                                        "params": {
-                                            "dither": {
-                                                "enabled": dither_cfg.enabled,
-                                                "pix": dither_cfg.step_pixels,
-                                                "interval": dither_cfg.interval_frames
-                                            }
-                                        }
-                                    });
-                                    let _ = stream.write_all(format!("{}\r\n", dither_payload).as_bytes());
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let dither_payload = serde_json::json!({
+                                                "id": 107,
+                                                "method": "set_setting",
+                                                "params": {
+                                                    "dither": {
+                                                        "enabled": dither_cfg.enabled,
+                                                        "pix": dither_cfg.step_pixels,
+                                                        "interval": dither_cfg.interval_frames
+                                                    }
+                                                }
+                                            });
+                                            let _ = stream.write_all(format!("{}\r\n", dither_payload).as_bytes());
 
-                                    let payload = serde_json::json!({
-                                        "id": 102,
-                                        "method": "start_stack"
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                            let payload = serde_json::json!({
+                                                "id": 102,
+                                                "method": "start_stack"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10007,
+                                                "cmd": "start_stack"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                            let body = "Duration=10&Light=true&ClientID=1&ClientTransactionID=102";
+                                            let msg = format!(
+                                                "PUT /api/v1/camera/0/startexposure HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                                                body.len(), body
+                                            );
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                    }
                                 }
                             }
                         }
@@ -348,34 +431,79 @@ impl SeestarClient {
                             t.state = SeestarState::Tracking;
                             t.last_log_message = format!("Pinoaminen pysäytetty kohteelle {}. Valotettu {} ruutua.", t.target_name, t.stacked_frames);
                             let is_sim = t.is_simulation;
+                            let proto = t.protocol;
                             drop(t);
 
                             if !is_sim {
                                 if let Some(stream) = &mut active_stream {
-                                    let payload = serde_json::json!({
-                                        "id": 103,
-                                        "method": "iscope_stop_view"
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let payload = serde_json::json!({
+                                                "id": 103,
+                                                "method": "iscope_stop_view"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10008,
+                                                "cmd": "stop_stack"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                            let body = "ClientID=1&ClientTransactionID=103";
+                                            let msg = format!(
+                                                "PUT /api/v1/camera/0/stopexposure HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                                                body.len(), body
+                                            );
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                    }
                                 }
                             }
                         }
                         SeestarCommand::Park => {
                             let mut t = telem_clone.lock().unwrap();
                             t.state = SeestarState::Parked;
-                            t.last_log_message = "Seestar ajettu parkkiasentoon (virransäästö / suoja).".to_string();
+                            let scope_name = t.scope_model.display_short();
+                            t.last_log_message = format!("{} ajettu parkkiasentoon (virransäästö / suoja).", scope_name);
                             let is_sim = t.is_simulation;
+                            let proto = t.protocol;
                             drop(t);
 
                             if !is_sim {
                                 if let Some(stream) = &mut active_stream {
-                                    let payload = serde_json::json!({
-                                        "id": 104,
-                                        "method": "scope_park"
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let payload = serde_json::json!({
+                                                "id": 104,
+                                                "method": "scope_park"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10009,
+                                                "cmd": "park"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                            let body = "ClientID=1&ClientTransactionID=104";
+                                            let msg = format!(
+                                                "PUT /api/v1/telescope/0/park HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                                                body.len(), body
+                                            );
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                    }
                                 }
                             }
                         }
@@ -437,12 +565,34 @@ impl SeestarClient {
 
                             if !is_sim {
                                 if let Some(stream) = &mut active_stream {
-                                    let payload = serde_json::json!({
-                                        "id": 106,
-                                        "method": "auto_focal"
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                    let proto = { telem_clone.lock().unwrap().protocol };
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let payload = serde_json::json!({
+                                                "id": 106,
+                                                "method": "auto_focal"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10010,
+                                                "cmd": "autofocus"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
+                                            let body = "Position=1450&ClientID=1&ClientTransactionID=106";
+                                            let msg = format!(
+                                                "PUT /api/v1/focuser/0/move HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
+                                                body.len(), body
+                                            );
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                    }
                                 }
                             }
                         }
@@ -791,6 +941,10 @@ impl SeestarClient {
 
     pub fn set_simulation(&self, sim: bool) {
         let _ = self.command_tx.send(SeestarCommand::SetSimulation(sim));
+    }
+
+    pub fn set_model(&self, model: crate::telescope::mosaic::TelescopeModel) {
+        let _ = self.command_tx.send(SeestarCommand::SetModel(model));
     }
 
     pub fn goto_target(&self, name: &str, ra_hours: f64, dec_deg: f64) {

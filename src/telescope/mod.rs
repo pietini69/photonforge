@@ -15,7 +15,9 @@ pub use coordinates::{
 #[allow(unused_imports)]
 pub use downloader::{LiveIngestConfig, LiveIngestManager, LiveIngestStatus};
 #[allow(unused_imports)]
-pub use mosaic::{MosaicGridConfig, MosaicPanel, MosaicPlan, MosaicScopeModel};
+pub use mosaic::{
+    MosaicGridConfig, MosaicPanel, MosaicPlan, MosaicScopeModel, TelescopeModel, TelescopeProtocol,
+};
 #[allow(unused_imports)]
 pub use seestar::{SeestarClient, SeestarState, SeestarTelemetry};
 #[allow(unused_imports)]

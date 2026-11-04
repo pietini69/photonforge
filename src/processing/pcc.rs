@@ -71,6 +71,16 @@ pub enum SensorProfile {
     SeestarS50Imx462,
     /// ZWO Seestar S30 (Sony IMX662 STARVIS 2 - ultra-low read noise, high G/R QE)
     SeestarS30Imx662,
+    /// Sony IMX585 4K STARVIS 2 (Seestar S50 Pro, S30 Pro, Vespera II)
+    SonyImx585,
+    /// DwarfLab DWARF 3 (Sony IMX678 4K STARVIS 2)
+    SonyImx678,
+    /// DwarfLab DWARF II (Sony IMX415 4K STARVIS)
+    SonyImx415,
+    /// Vaonis Vespera Pro (Sony IMX676 12.5 MP square)
+    SonyImx676,
+    /// Celestron Origin (Sony IMX178 6.3 MP STARVIS)
+    SonyImx178,
     /// ZWO ASI533MC / ASI2600MC (Sony IMX533 / IMX571 BSI)
     SonyImx533Imx571,
     /// Generic OSC / DSLR Bayer RGB sensor
@@ -82,6 +92,11 @@ impl SensorProfile {
         match self {
             SensorProfile::SeestarS50Imx462 => "Seestar S50 (Sony IMX462)",
             SensorProfile::SeestarS30Imx662 => "Seestar S30 (Sony IMX662)",
+            SensorProfile::SonyImx585 => "Seestar Pro / Vespera II (Sony IMX585)",
+            SensorProfile::SonyImx678 => "DWARF 3 (Sony IMX678)",
+            SensorProfile::SonyImx415 => "DWARF II (Sony IMX415)",
+            SensorProfile::SonyImx676 => "Vespera Pro (Sony IMX676)",
+            SensorProfile::SonyImx178 => "Celestron Origin (Sony IMX178)",
             SensorProfile::SonyImx533Imx571 => "ZWO ASI533 / ASI2600 (IMX533/571)",
             SensorProfile::GenericOsc => "Yleinen OSC / DSLR (Standard RGB)",
         }
@@ -94,6 +109,16 @@ impl SensorProfile {
             SensorProfile::SeestarS50Imx462 => (0.975, 1.045),
             // IMX662 STARVIS 2 has very balanced G/R and improved blue QE
             SensorProfile::SeestarS30Imx662 => (0.985, 1.030),
+            // IMX585 STARVIS 2 - modern high QE across VIS spectrum
+            SensorProfile::SonyImx585 => (0.982, 1.025),
+            // IMX678 STARVIS 2 - excellent high-density QE
+            SensorProfile::SonyImx678 => (0.984, 1.028),
+            // IMX415 - 1.45um BSI
+            SensorProfile::SonyImx415 => (0.990, 1.020),
+            // IMX676 - 2.0um square BSI
+            SensorProfile::SonyImx676 => (0.985, 1.025),
+            // IMX178 - 2.4um BSI RASA
+            SensorProfile::SonyImx178 => (0.988, 1.018),
             // IMX533 / IMX571 BSI sensors
             SensorProfile::SonyImx533Imx571 => (0.990, 1.020),
             SensorProfile::GenericOsc => (1.000, 1.000),
@@ -178,9 +203,24 @@ impl PccConfig {
         )
         .to_uppercase();
 
-        if scope_cam.contains("S30") || scope_cam.contains("IMX662") {
+        if scope_cam.contains("S30 PRO") || scope_cam.contains("S50 PRO") || scope_cam.contains("IMX585") {
+            self.sensor = SensorProfile::SonyImx585;
+            detected_notes.push("Sony IMX585 (Seestar Pro / Vespera II)");
+        } else if scope_cam.contains("S30") || scope_cam.contains("IMX662") {
             self.sensor = SensorProfile::SeestarS30Imx662;
             detected_notes.push("Seestar S30 (IMX662)");
+        } else if scope_cam.contains("DWARF 3") || scope_cam.contains("DWARF3") || scope_cam.contains("IMX678") {
+            self.sensor = SensorProfile::SonyImx678;
+            detected_notes.push("DWARF 3 (IMX678)");
+        } else if scope_cam.contains("DWARF") || scope_cam.contains("IMX415") {
+            self.sensor = SensorProfile::SonyImx415;
+            detected_notes.push("DWARF II (IMX415)");
+        } else if scope_cam.contains("VESPERA PRO") || scope_cam.contains("IMX676") {
+            self.sensor = SensorProfile::SonyImx676;
+            detected_notes.push("Vespera Pro (IMX676)");
+        } else if scope_cam.contains("ORIGIN") || scope_cam.contains("IMX178") {
+            self.sensor = SensorProfile::SonyImx178;
+            detected_notes.push("Celestron Origin (IMX178)");
         } else if scope_cam.contains("S50") || scope_cam.contains("SEESTAR") || scope_cam.contains("IMX462") {
             self.sensor = SensorProfile::SeestarS50Imx462;
             detected_notes.push("Seestar S50 (IMX462)");

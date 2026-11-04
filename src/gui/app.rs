@@ -1917,22 +1917,25 @@ impl eframe::App for PhotonForgeApp {
 
                     ui.separator();
 
-                    // Seestar quick status button
+                    // Telescope quick status button
                     let telem = self.seestar_client.get_telemetry();
+                    let scope_name = telem.scope_model.display_short();
                     let (status_text, status_col) = if telem.connected {
-                        (
-                            format!("🔭 Seestar: {} (🔋 {}%)", telem.state.display_fi(), telem.battery_pct),
-                            Color32::from_rgb(100, 255, 140),
-                        )
-                    } else if telem.is_simulation {
-                        (
-                            format!("🎮 Seestar: Simulaatio (🔋 {}%)", telem.battery_pct),
-                            Color32::from_rgb(120, 210, 255),
-                        )
+                        if !telem.is_simulation {
+                            (
+                                format!("🔭 {}: {} (🔋 {}%)", scope_name, telem.state.display_fi(), telem.battery_pct),
+                                Color32::from_rgb(100, 255, 140),
+                            )
+                        } else {
+                            (
+                                format!("🎮 {}: Simulaatio (🔋 {}%)", scope_name, telem.battery_pct),
+                                Color32::from_rgb(120, 210, 255),
+                            )
+                        }
                     } else {
-                        (crate::i18n::tr("🔭 Seestar: Ei yhteyttä").to_string(), Color32::from_rgb(160, 160, 170))
+                        (format!("🔭 {}: {}", scope_name, crate::i18n::tr("Ei yhteyttä")), Color32::from_rgb(160, 160, 170))
                     };
-                    if ui.button(RichText::new(status_text).color(status_col)).on_hover_text(crate::i18n::tr("Avaa Seestar S-30 ohjaus, tähtikartta ja yösekvensseri")).clicked() {
+                    if ui.button(RichText::new(status_text).color(status_col)).on_hover_text(crate::i18n::tr("Avaa kaukoputkiohjaus, tähtikartta ja yösekvensseri")).clicked() {
                         self.active_tab = ActiveTab::Telescope;
                     }
 
@@ -2015,7 +2018,7 @@ impl eframe::App for PhotonForgeApp {
                             ui.selectable_value(&mut self.active_tab, ActiveTab::LiveStacking, crate::i18n::tr("⚡ Live-pino"));
                             ui.selectable_value(&mut self.active_tab, ActiveTab::ChannelCombination, crate::i18n::tr("🌈 Kanavat"));
                             ui.selectable_value(&mut self.active_tab, ActiveTab::Processing, crate::i18n::tr("🎨 Käsittely"));
-                            ui.selectable_value(&mut self.active_tab, ActiveTab::Telescope, crate::i18n::tr("🔭 Seestar & Kartta"));
+                            ui.selectable_value(&mut self.active_tab, ActiveTab::Telescope, crate::i18n::tr("🔭 Kaukoputki & Kartta"));
                         });
                     });
 
@@ -4172,8 +4175,13 @@ impl PhotonForgeApp {
                     .width(combo_w)
                     .show_ui(ui, |ui| {
                         for s in [
-                            SensorProfile::SeestarS30Imx662,
                             SensorProfile::SeestarS50Imx462,
+                            SensorProfile::SeestarS30Imx662,
+                            SensorProfile::SonyImx585,
+                            SensorProfile::SonyImx678,
+                            SensorProfile::SonyImx415,
+                            SensorProfile::SonyImx676,
+                            SensorProfile::SonyImx178,
                             SensorProfile::SonyImx533Imx571,
                             SensorProfile::GenericOsc,
                         ] {

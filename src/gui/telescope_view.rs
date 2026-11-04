@@ -140,14 +140,15 @@ impl TelescopeView {
         });
         ui.add_space(4.0);
 
-        // 1. SEESTAR S-30 CONNECTION & TELEMETRY
+        // 1. TELESCOPE CONNECTION & TELEMETRY
         ui.group(|ui| {
             ui.set_width(ui.available_width());
             let (sr, sg, sb) = telem.state.color_rgb();
             let arrow = if state.section_connection_open { "▼" } else { "▶" };
+            let scope_header = format!("{} 🔭 {}", arrow, telem.scope_model.display_short());
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new(format!("{} 🔭 Seestar S-30", arrow)).color(Color32::from_rgb(80, 200, 255)).strong()).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(scope_header).color(Color32::from_rgb(80, 200, 255)).strong()).frame(false)).clicked() {
                     state.section_connection_open = !state.section_connection_open;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -157,6 +158,66 @@ impl TelescopeView {
 
             if state.section_connection_open {
                 ui.add_space(4.0);
+
+                // Scope model selector
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(crate::i18n::tr("Kaukoputki:")).strong());
+                    let mut current_model = telem.scope_model;
+                    let combo_w = (ui.available_width() - 8.0).max(180.0);
+                    egui::ComboBox::from_id_salt("sidebar_telescope_model_select")
+                        .width(combo_w)
+                        .selected_text(current_model.display_short())
+                        .show_ui(ui, |ui| {
+                            ui.label(RichText::new("── ZWO Seestar ──").small().color(Color32::from_rgb(100, 200, 255)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS30, "ZWO Seestar S-30 (150mm f/5, 2.1° × 1.2°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS30Pro, "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 4.0° × 2.2°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Vespera2, "Vaonis Vespera II (250mm f/5 4K, 2.6° × 1.4°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::VesperaPro, "Vaonis Vespera Pro (250mm f/5 12.5MP, 1.6° × 1.6°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::CelestronOrigin, "Celestron Origin RASA (335mm f/2.2, 1.3° × 0.8°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys (Custom FOV)"));
+                        });
+                    if current_model != telem.scope_model {
+                        client.set_model(current_model);
+                        state.mosaic_config.scope_model = current_model;
+                        state.seestar_ip = current_model.default_ip().to_string();
+                        ingest_mgr.set_model_source_path(current_model);
+                        state.recompute_mosaic();
+                    }
+                });
+
+                // Specs badge
+                let (fov_w, fov_h) = telem.scope_model.fov_deg();
+                ui.label(
+                    RichText::new(format!(
+                        "📐 {}mm f/{:.1} | Kenno: {} | {} | FOV: {:.2}° × {:.2}°",
+                        telem.scope_model.focal_length_mm(),
+                        telem.scope_model.focal_ratio(),
+                        telem.scope_model.sensor_name(),
+                        telem.scope_model.protocol().protocol_name(),
+                        fov_w,
+                        fov_h
+                    ))
+                    .small()
+                    .color(Color32::from_rgb(140, 185, 215)),
+                );
+                ui.add_space(2.0);
 
                 // Connection controls
                 ui.horizontal(|ui| {
@@ -218,7 +279,7 @@ impl TelescopeView {
 
                     // LP filter
                     let lp_label = if telem.lp_filter_active { crate::i18n::tr("🌙 LP: Päällä") } else { crate::i18n::tr("☀️ LP: Pois") };
-                    if ui.button(lp_label).on_hover_text(crate::i18n::tr("Kytke Seestarin sisäinen valosaastesuodatin (Dual-Band)")).clicked() {
+                    if ui.button(lp_label).on_hover_text(crate::i18n::tr("Kytke kaukoputken sisäinen valosaastesuodatin (Dual-Band)")).clicked() {
                         client.toggle_lp_filter();
                     }
                 });
@@ -343,9 +404,18 @@ impl TelescopeView {
                     }
                 });
 
-                ui.horizontal(|ui| {
-                    if ui.button(crate::i18n::tr("🔗 Yhdistä Seestarin verkkolevyyn (SMB)")).on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images)")).clicked() {
-                        LiveIngestManager::open_seestar_smb(&state.seestar_ip);
+                ui.horizontal_wrapped(|ui| {
+                    let share_hint = telem.scope_model.smb_share_hint();
+                    if telem.scope_model.brand() == "ZWO Seestar" {
+                        if ui
+                            .button(crate::i18n::tr("🔗 Yhdistä Seestarin verkkolevyyn (SMB)"))
+                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images)"))
+                            .clicked()
+                        {
+                            LiveIngestManager::open_seestar_smb(&state.seestar_ip);
+                        }
+                    } else {
+                        ui.label(RichText::new(format!("📁 Jako: {}", share_hint)).small().color(Color32::from_rgb(170, 200, 230)));
                     }
                 });
 
@@ -557,14 +627,64 @@ impl TelescopeView {
                         .width(combo_w)
                         .selected_text(state.mosaic_config.scope_model.display_short())
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30, "ZWO Seestar S-30 (150mm f/5, 2.1° × 1.2°)");
+                            ui.label(RichText::new("── ZWO Seestar ──").small().color(Color32::from_rgb(100, 200, 255)));
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys (Custom)"));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30, "ZWO Seestar S-30 (150mm f/5, 2.1° × 1.2°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30Pro, "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 4.0° × 2.2°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Vespera2, "Vaonis Vespera II (250mm f/5 4K, 2.6° × 1.4°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::VesperaPro, "Vaonis Vespera Pro (250mm f/5 12.5MP, 1.6° × 1.6°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::CelestronOrigin, "Celestron Origin RASA (335mm f/2.2, 1.3° × 0.8°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys (Custom FOV)"));
                         });
                     if prev_model != state.mosaic_config.scope_model {
                         state.recompute_mosaic();
                     }
                 });
+
+                if state.mosaic_config.scope_model == MosaicScopeModel::Custom {
+                    ui.group(|ui| {
+                        ui.label(RichText::new(crate::i18n::tr("Oman kaukoputken optiikka ja kenno:")).strong().small());
+                        let mut custom_changed = false;
+                        ui.horizontal_wrapped(|ui| {
+                            custom_changed |= ui.add(egui::DragValue::new(&mut state.mosaic_config.custom_fov_w_deg).range(0.1..=20.0).speed(0.05).prefix("FOV L: ").suffix("°")).changed();
+                            custom_changed |= ui.add(egui::DragValue::new(&mut state.mosaic_config.custom_fov_h_deg).range(0.1..=20.0).speed(0.05).prefix("FOV K: ").suffix("°")).changed();
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(egui::DragValue::new(&mut state.mosaic_config.custom_focal_length_mm).range(10.0..=5000.0).speed(5.0).prefix("Polttoväli: ").suffix(" mm"));
+                            ui.add(egui::DragValue::new(&mut state.mosaic_config.custom_sensor_w_mm).range(1.0..=100.0).speed(0.1).prefix("Kenno L: ").suffix(" mm"));
+                            ui.add(egui::DragValue::new(&mut state.mosaic_config.custom_sensor_h_mm).range(1.0..=100.0).speed(0.1).prefix("Kenno K: ").suffix(" mm"));
+                            if ui.small_button(crate::i18n::tr("📐 Laske FOV")).clicked() {
+                                let (w, h) = MosaicGridConfig::compute_custom_fov(
+                                    state.mosaic_config.custom_focal_length_mm,
+                                    state.mosaic_config.custom_sensor_w_mm,
+                                    state.mosaic_config.custom_sensor_h_mm,
+                                );
+                                state.mosaic_config.custom_fov_w_deg = w;
+                                state.mosaic_config.custom_fov_h_deg = h;
+                                custom_changed = true;
+                            }
+                        });
+                        if custom_changed {
+                            state.recompute_mosaic();
+                        }
+                    });
+                }
 
                 // Target center info
                 let center_label = state.selected_object.as_ref().map(|o| format!("{} ({})", o.id, o.name)).unwrap_or_else(|| crate::i18n::tr("Ei valittua kohdetta (valitse yltä)").to_string());
@@ -1473,7 +1593,7 @@ impl TelescopeView {
             painter.text(
                 Pos2::new(pt.x, pt.y + 26.0),
                 egui::Align2::CENTER_TOP,
-                format!("⊕ Seestar S-30 ({})", telem.state.display_fi()),
+                format!("⊕ {} ({})", telem.scope_model.display_short(), telem.state.display_fi()),
                 egui::FontId::proportional(12.0),
                 reticle_color,
             );
