@@ -2,6 +2,26 @@
 
 All notable changes to **PhotonForge** are documented in this file.
 
+## [1.0.3] - 2026-11-04
+
+### Added & Improved
+- **Astrometry.net Cloud Plate Solving:**
+  - High-precision cloud-based blind plate solving via Astrometry.net API.
+  - Dedicated configuration dialog with direct browser API key retrieval link, live credential validation test, and default solver selection.
+  - Non-blocking background solver with stage progression, real-time status reporting, and user cancellation.
+- **Left Sidebar Resizing Stability & Drift Prevention:**
+  - Completely resolved egui runaway panel expansion feedback loop caused by `set_width(available_width)` inside frame groups.
+  - Replaced with non-expanding `set_max_width` throughout files, stacking, live stack, channel combinations, and telescope tabs.
+  - Implemented robust `Layout::right_to_left` header badge and button anchoring, ensuring buttons and status labels never overflow the panel edge.
+  - Guaranteed text wrapping and automatic title truncation across overnight sequencer targets.
+  - Clean 400 px default width with smooth manual resizing from 320 px to 650 px.
+- **Interactive 3D Horizon Sky Dome & Smoother Zoom:**
+  - Added ground-referenced 3D horizon sky dome perspective alongside zenith all-sky projection.
+  - Refined exponential zoom response for stable, controllable field-of-view inspection.
+- **DwarfLab Smart Telescope Support:**
+  - Direct integration for DwarfLab DWARF 3 4K, DWARF II, DWARF Mini, and DRACO smart telescopes via Open API (WebSocket) and dwarfAlp Alpaca bridge.
+  - Accurate optics profiles, sensor FOV grids, and automated image folder ingestion.
+
 ## [1.0.2] - 2026-11-04
 
 ### Added & Improved
