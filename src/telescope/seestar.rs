@@ -479,13 +479,22 @@ impl SeestarClient {
                                 let _ = alpaca_put(&alpaca_agent, &ip, port, "telescope/0/unpark", &[("ClientID", "1"), ("ClientTransactionID", "100")]);
                                 let ra_str = ra.to_string();
                                 let dec_str = dec.to_string();
-                                let _ = alpaca_put(
+                                let res = alpaca_put(
                                     &alpaca_agent,
                                     &ip,
                                     port,
                                     "telescope/0/slewtocoordinatesasync",
                                     &[("RightAscension", &ra_str), ("Declination", &dec_str), ("ClientID", "1"), ("ClientTransactionID", "101")],
                                 );
+                                if let Err(e) = res {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.state = SeestarState::Idle;
+                                    if e.contains("1279") || e.to_lowercase().contains("operate") || e.to_lowercase().contains("sync") {
+                                        t.last_log_message = "⚠️ Seestar vaatii alkusuuntauksen: Avaa putki ja tee alkusuuntaus (vaaterointi + tähtitunnistus) kerran Seestar-mobiilisovelluksella.".to_string();
+                                    } else {
+                                        t.last_log_message = format!("GoTo-virhe: {}", e);
+                                    }
+                                }
                             } else if let Some(stream) = &mut active_stream {
                                 match proto {
                                     crate::telescope::mosaic::TelescopeProtocol::Seestar => {

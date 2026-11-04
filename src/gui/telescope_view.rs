@@ -2,6 +2,7 @@ use crate::telescope::catalog::{DsoType, SkyObject};
 use crate::telescope::coordinates::{
     alt_az_to_canvas_normalized, format_dec, format_ra, night_altitude_profile, ra_dec_to_alt_az,
 };
+use crate::telescope::discovery::{discover_telescope, TelescopeConfig};
 use crate::telescope::downloader::LiveIngestManager;
 use crate::telescope::mosaic::{MosaicGridConfig, MosaicPlan, MosaicScopeModel};
 use crate::telescope::seestar::{SeestarClient, SeestarState};
@@ -38,16 +39,20 @@ pub struct TelescopeViewState {
     pub section_search_open: bool,
     pub section_mosaic_open: bool,
     pub section_sequencer_open: bool,
+    pub is_discovering: bool,
+    pub discovery_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    pub discovery_status: Option<String>,
 }
 
 impl Default for TelescopeViewState {
     fn default() -> Self {
         let mosaic_config = MosaicGridConfig::default();
         let mosaic_plan = MosaicPlan::compute(&mosaic_config);
+        let cfg = TelescopeConfig::load();
 
         Self {
             center_view: TelescopeCenterView::StarMap,
-            seestar_ip: "192.168.110.1".to_string(),
+            seestar_ip: cfg.last_ip,
             selected_object: None,
             search_query: String::new(),
             filter_type: None,
@@ -66,11 +71,64 @@ impl Default for TelescopeViewState {
             section_search_open: false,
             section_mosaic_open: true,
             section_sequencer_open: true,
+            is_discovering: false,
+            discovery_rx: None,
+            discovery_status: None,
         }
     }
 }
 
 impl TelescopeViewState {
+    pub fn save_settings(&self, scope_name: &str) {
+        let clean_ip = self.seestar_ip.trim();
+        if !clean_ip.is_empty() {
+            let cfg = TelescopeConfig {
+                last_ip: clean_ip.to_string(),
+                scope_model: Some(scope_name.to_string()),
+            };
+            cfg.save();
+        }
+    }
+
+    pub fn start_discovery(&mut self) {
+        if self.is_discovering {
+            return;
+        }
+        self.is_discovering = true;
+        self.discovery_status = Some(crate::i18n::tr("Etsitään kaukoputkea lähiverkosta...").to_string());
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.discovery_rx = Some(rx);
+        let last_ip = self.seestar_ip.clone();
+
+        std::thread::spawn(move || {
+            let res = discover_telescope(&last_ip);
+            let _ = tx.send(res);
+        });
+    }
+
+    pub fn check_discovery(&mut self) {
+        if let Some(rx) = &self.discovery_rx {
+            if let Ok(res) = rx.try_recv() {
+                self.is_discovering = false;
+                self.discovery_rx = None;
+                match res {
+                    Ok(found_ip) => {
+                        self.seestar_ip = found_ip.clone();
+                        self.discovery_status = Some(format!("Löydetty: {}", found_ip));
+                        let cfg = TelescopeConfig {
+                            last_ip: found_ip,
+                            scope_model: None,
+                        };
+                        cfg.save();
+                    }
+                    Err(err_msg) => {
+                        self.discovery_status = Some(err_msg);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn recompute_mosaic(&mut self) {
         if let Some(target) = &self.selected_object {
             let short_name = target.name.split('/').next().unwrap_or(&target.name).trim();
@@ -116,6 +174,7 @@ impl TelescopeView {
     ) {
         let telem = client.get_telemetry();
         let now_utc = Utc::now();
+        state.check_discovery();
         ui.set_width(ui.available_width());
 
         // Quick Toolbar: Expand all / Collapse all
@@ -201,6 +260,7 @@ impl TelescopeView {
                         state.seestar_ip = current_model.default_ip().to_string();
                         ingest_mgr.set_model_source_path(current_model);
                         state.recompute_mosaic();
+                        state.save_settings(current_model.display_short());
                     }
                 });
 
@@ -224,13 +284,31 @@ impl TelescopeView {
                 // Connection controls
                 ui.horizontal(|ui| {
                     ui.label("IP:");
-                    ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(120.0));
+                    ui.add(egui::TextEdit::singleline(&mut state.seestar_ip).desired_width(105.0));
+
+                    if state.is_discovering {
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(
+                                RichText::new(crate::i18n::tr("⏳ Etsitään..."))
+                                    .small()
+                                    .color(Color32::from_rgb(255, 200, 100)),
+                            ),
+                        );
+                    } else if ui
+                        .button(crate::i18n::tr("🔍 Etsi"))
+                        .on_hover_text(crate::i18n::tr("Hae Seestar automaattisesti lähiverkosta (mDNS / IP-haku)"))
+                        .clicked()
+                    {
+                        state.start_discovery();
+                    }
 
                     if telem.connected || telem.state == SeestarState::Reconnecting {
                         if ui.button(crate::i18n::tr("Katkaise")).clicked() {
                             client.disconnect();
                         }
                     } else if ui.button(crate::i18n::tr("🔌 Yhdistä")).clicked() {
+                        state.save_settings(telem.scope_model.display_short());
                         client.connect(&state.seestar_ip);
                     }
 
@@ -239,6 +317,17 @@ impl TelescopeView {
                         client.set_simulation(sim);
                     }
                 });
+
+                if let Some(msg) = &state.discovery_status {
+                    let col = if state.is_discovering {
+                        Color32::from_rgb(255, 200, 100)
+                    } else if msg.starts_with("Löydetty") || msg.starts_with("Found") {
+                        Color32::from_rgb(100, 240, 150)
+                    } else {
+                        Color32::from_rgb(255, 150, 120)
+                    };
+                    ui.label(RichText::new(format!("📡 {}", msg)).small().color(col));
+                }
 
                 if telem.scope_model.brand() == "ZWO Seestar" {
                     ui.add_space(2.0);
@@ -249,6 +338,15 @@ impl TelescopeView {
                             ))
                             .small()
                             .color(Color32::from_rgb(100, 220, 160))
+                        );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(crate::i18n::tr(
+                                "💡 Alkusuuntaus: Avaa putki ja tee alkusuuntaus (vaaterointi + tähtitunnistus) kerran Seestar-mobiilisovelluksella. Tämän jälkeen GoTo, seuranta ja kuvaus toimivat PhotonForgesta!"
+                            ))
+                            .small()
+                            .color(Color32::from_rgb(120, 210, 255))
                         );
                     });
                     ui.horizontal(|ui| {
@@ -376,10 +474,10 @@ impl TelescopeView {
                     }
 
                     if telem.state == SeestarState::Parked {
-                        if ui.button(crate::i18n::tr("🚀 Avaa kaukoputki")).on_hover_text(crate::i18n::tr("Avaa kaukoputki lepoasennosta")).clicked() {
+                        if ui.button(crate::i18n::tr("🚀 Avaa kaukoputki")).on_hover_text(crate::i18n::tr("Poista lepotila ohjelmallisesti (Alpaca unpark)")).clicked() {
                             client.unpark();
                         }
-                    } else if ui.button(crate::i18n::tr("🏠 Parkkiin")).on_hover_text(crate::i18n::tr("Aja kaukoputki turva-asentoon")).clicked() {
+                    } else if ui.button(crate::i18n::tr("🏠 Parkkiin")).on_hover_text(crate::i18n::tr("Aseta lepotila ohjelmallisesti (Alpaca park). Huom: fyysinen varren taitto kasaan vaatii Seestar-sovelluksen tai virtapainikkeen")).clicked() {
                         client.park();
                     }
                 });

@@ -785,6 +785,13 @@ pub fn tr(s: &'static str) -> &'static str {
         "📡 ASCOM Alpaca -ohjaus (portti 32323): Ota Alpaca päälle Seestar-sovelluksesta (Profiili -> Laitehallinta -> Lisätoiminnot -> Seestar Alpaca: Päällä)." => "📡 ASCOM Alpaca Control (port 32323): Enable Alpaca in Seestar app (Profile -> Device Management -> Assistive Features -> Seestar Alpaca: ON).",
         "🚀 Avaa kaukoputki" => "🚀 Open Telescope",
         "Avaa kaukoputki lepoasennosta" => "Unpark and open telescope arm",
+        "🔍 Etsi" => "🔍 Discover",
+        "⏳ Etsitään..." => "⏳ Searching...",
+        "Hae Seestar automaattisesti lähiverkosta (mDNS / IP-haku)" => "Search Seestar automatically on LAN (mDNS / IP scan)",
+        "Etsitään kaukoputkea lähiverkosta..." => "Searching for telescope on LAN...",
+        "💡 Alkusuuntaus: Avaa putki ja tee alkusuuntaus (vaaterointi + tähtitunnistus) kerran Seestar-mobiilisovelluksella. Tämän jälkeen GoTo, seuranta ja kuvaus toimivat PhotonForgesta!" => "💡 Initial Alignment: Open the telescope and perform alignment (leveling + plate solving) once in the Seestar mobile app. After this, GoTo, tracking, and capture work directly from PhotonForge!",
+        "Poista lepotila ohjelmallisesti (Alpaca unpark)" => "Clear park state in software (Alpaca unpark)",
+        "Aseta lepotila ohjelmallisesti (Alpaca park). Huom: fyysinen varren taitto kasaan vaatii Seestar-sovelluksen tai virtapainikkeen" => "Set park state in software (Alpaca park). Note: physical arm stowing requires Seestar app or physical power button",
         _ => s,
     }
 }
