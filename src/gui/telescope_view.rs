@@ -242,6 +242,15 @@ impl TelescopeView {
 
                 if telem.scope_model.brand() == "ZWO Seestar" {
                     ui.add_space(2.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(crate::i18n::tr(
+                                "📡 ASCOM Alpaca -ohjaus (portti 32323): Ota Alpaca päälle Seestar-sovelluksesta (Profiili -> Laitehallinta -> Lisätoiminnot -> Seestar Alpaca: Päällä)."
+                            ))
+                            .small()
+                            .color(Color32::from_rgb(100, 220, 160))
+                        );
+                    });
                     ui.horizontal(|ui| {
                         if ui.button(RichText::new(crate::i18n::tr("📁 Yhdistä kuvat Macille (SMB)")).color(Color32::from_rgb(100, 220, 255)).strong())
                             .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa Macilla!"))
@@ -250,13 +259,6 @@ impl TelescopeView {
                             LiveIngestManager::open_seestar_smb(&state.seestar_ip);
                         }
                     });
-                    ui.label(
-                        RichText::new(crate::i18n::tr(
-                            "💡 Seestar S30/S50: Ohjaa kaukoputkea puhelimen iOS-sovelluksella (GoTo ja seuranta) ja pinoa ruudut tähän Macille SMB-jaolla."
-                        ))
-                        .small()
-                        .color(Color32::from_rgb(130, 185, 230))
-                    );
                     ui.add_space(2.0);
                 }
 

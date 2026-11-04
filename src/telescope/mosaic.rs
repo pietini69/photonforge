@@ -229,7 +229,7 @@ impl TelescopeModel {
             TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro
             | TelescopeModel::SeestarS30
-            | TelescopeModel::SeestarS30Pro => "192.168.110.1",
+            | TelescopeModel::SeestarS30Pro => "seestar.local",
             TelescopeModel::Dwarf3
             | TelescopeModel::DwarfMini
             | TelescopeModel::Dwarf2
@@ -246,7 +246,7 @@ impl TelescopeModel {
             TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro
             | TelescopeModel::SeestarS30
-            | TelescopeModel::SeestarS30Pro => 4700,
+            | TelescopeModel::SeestarS30Pro => 32323,
             TelescopeModel::Dwarf3
             | TelescopeModel::DwarfMini
             | TelescopeModel::Dwarf2
@@ -262,7 +262,7 @@ impl TelescopeModel {
             TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro
             | TelescopeModel::SeestarS30
-            | TelescopeModel::SeestarS30Pro => TelescopeProtocol::Seestar,
+            | TelescopeModel::SeestarS30Pro => TelescopeProtocol::AscomAlpaca,
             TelescopeModel::Dwarf3
             | TelescopeModel::DwarfMini
             | TelescopeModel::Dwarf2
