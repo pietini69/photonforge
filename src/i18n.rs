@@ -783,6 +783,8 @@ pub fn tr(s: &'static str) -> &'static str {
         "Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa Macilla!" => "Mount Seestar network share in Finder (smb://<IP>/EMMC Images) for real-time live stacking on Mac!",
         "💡 Seestar S30/S50: Ohjaa kaukoputkea puhelimen iOS-sovelluksella (GoTo ja seuranta) ja pinoa ruudut tähän Macille SMB-jaolla." => "💡 Seestar S30/S50: Control telescope via mobile iOS app (GoTo/tracking) and live stack frames on Mac via SMB share.",
         "📡 ASCOM Alpaca -ohjaus (portti 32323): Ota Alpaca päälle Seestar-sovelluksesta (Profiili -> Laitehallinta -> Lisätoiminnot -> Seestar Alpaca: Päällä)." => "📡 ASCOM Alpaca Control (port 32323): Enable Alpaca in Seestar app (Profile -> Device Management -> Assistive Features -> Seestar Alpaca: ON).",
+        "🚀 Avaa kaukoputki" => "🚀 Open Telescope",
+        "Avaa kaukoputki lepoasennosta" => "Unpark and open telescope arm",
         _ => s,
     }
 }

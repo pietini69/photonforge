@@ -186,6 +186,7 @@ enum SeestarCommand {
     StartStacking,
     StopStacking,
     Park,
+    Unpark,
     ToggleLpFilter,
     SetLpFilter(bool),
     AutoFocus,
@@ -195,6 +196,65 @@ enum SeestarCommand {
         settle_secs: u32,
     },
     SetAutoReconnect(bool),
+}
+
+fn alpaca_put(
+    agent: &ureq::Agent,
+    ip: &str,
+    port: u16,
+    endpoint: &str,
+    form_data: &[(&str, &str)],
+) -> Result<serde_json::Value, String> {
+    let url = format!("http://{}:{}/api/v1/{}", ip, port, endpoint);
+    let resp = agent
+        .put(&url)
+        .set("Content-Type", "application/x-www-form-urlencoded")
+        .send_form(form_data)
+        .map_err(|e| e.to_string())?;
+
+    let text = resp.into_string().map_err(|e| e.to_string())?;
+    let val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if let Some(err_num) = val.get("ErrorNumber").and_then(|v| v.as_i64()) {
+        if err_num != 0 {
+            let msg = val
+                .get("ErrorMessage")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Alpaca error");
+            return Err(format!("Alpaca virhe {}: {}", err_num, msg));
+        }
+    }
+    Ok(val)
+}
+
+fn alpaca_get(
+    agent: &ureq::Agent,
+    ip: &str,
+    port: u16,
+    endpoint: &str,
+    query_params: &[(&str, &str)],
+) -> Result<serde_json::Value, String> {
+    let mut url = format!("http://{}:{}/api/v1/{}", ip, port, endpoint);
+    if !query_params.is_empty() {
+        let q_str = query_params
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("&");
+        url = format!("{}?{}", url, q_str);
+    }
+    let resp = agent.get(&url).call().map_err(|e| e.to_string())?;
+    let text = resp.into_string().map_err(|e| e.to_string())?;
+    let val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if let Some(err_num) = val.get("ErrorNumber").and_then(|v| v.as_i64()) {
+        if err_num != 0 {
+            let msg = val
+                .get("ErrorMessage")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Alpaca error");
+            return Err(format!("Alpaca virhe {}: {}", err_num, msg));
+        }
+    }
+    Ok(val)
 }
 
 impl Default for SeestarClient {
@@ -214,6 +274,12 @@ impl SeestarClient {
 
         // Background worker thread for handling networking / simulation
         thread::spawn(move || {
+            let alpaca_agent = ureq::AgentBuilder::new()
+                .timeout_connect(Duration::from_secs(3))
+                .timeout_read(Duration::from_secs(3))
+                .timeout_write(Duration::from_secs(3))
+                .build();
+            let mut alpaca_fail_count: u32 = 0;
             let mut active_stream: Option<TcpStream> = None;
             let mut last_heartbeat = Instant::now();
             let mut stack_timer = Instant::now();
@@ -253,79 +319,130 @@ impl SeestarClient {
                             let _dither_cfg = t.dither_config;
                             drop(t);
 
-                            // Attempt real TCP connection (supports both numeric IPs and hostnames like seestar.local)
-                            let addr_str = format!("{}:{}", ip, port);
-                            let resolved_addr = if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                                Some(addr)
-                            } else if let Ok(mut addrs) = addr_str.to_socket_addrs() {
-                                addrs.next()
-                            } else {
-                                None
-                            };
-
-                            if let Some(addr) = resolved_addr {
-                                match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
-                                    Ok(mut stream) => {
-                                        let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-                                        let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
-
-                                        match proto {
-                                            crate::telescope::mosaic::TelescopeProtocol::Seestar => {
-                                                let query = serde_json::json!({
-                                                    "id": 100,
-                                                    "method": "get_device_state"
-                                                });
-                                                let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
-                                            }
-                                            crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                                let hello = serde_json::json!({
-                                                    "interface": 10001,
-                                                    "cmd": "connect"
-                                                });
-                                                let _ = stream.write_all(format!("{}\r\n", hello).as_bytes());
-                                            }
-                                            crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                                let body = "Connected=true&ClientID=1&ClientTransactionID=1";
-                                                let req = format!(
-                                                    "PUT /api/v1/telescope/0/connected HTTP/1.1\r\nHost: {}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                    ip, body.len(), body
-                                                );
-                                                let _ = stream.write_all(req.as_bytes());
-                                            }
-                                            crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
-                                        }
-
-                                        active_stream = Some(stream);
+                            if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                let connect_form = [("Connected", "true"), ("ClientID", "1"), ("ClientTransactionID", "1")];
+                                match alpaca_put(&alpaca_agent, &ip, port, "telescope/0/connected", &connect_form) {
+                                    Ok(_) => {
+                                        // Connect companion devices
+                                        let _ = alpaca_put(&alpaca_agent, &ip, port, "camera/0/connected", &connect_form);
+                                        let _ = alpaca_put(&alpaca_agent, &ip, port, "filterwheel/0/connected", &connect_form);
+                                        let _ = alpaca_put(&alpaca_agent, &ip, port, "focuser/0/connected", &connect_form);
 
                                         let mut t = telem_clone.lock().unwrap();
                                         t.connected = true;
                                         t.is_simulation = false;
-                                        t.state = SeestarState::Idle;
-                                        t.last_log_message = format!("Yhteys muodostettu kohteeseen {} ({}:{})!", scope_name, ip, port);
+                                        t.reconnect_attempts = 0;
+                                        alpaca_fail_count = 0;
+
+                                        // Query current park state
+                                        if let Ok(val) = alpaca_get(&alpaca_agent, &ip, port, "telescope/0/atpark", &[("ClientID", "1")]) {
+                                            if let Some(at_park) = val.get("Value").and_then(|v| v.as_bool()) {
+                                                t.state = if at_park { SeestarState::Parked } else { SeestarState::Idle };
+                                            } else {
+                                                t.state = SeestarState::Idle;
+                                            }
+                                        } else {
+                                            t.state = SeestarState::Idle;
+                                        }
+
+                                        // Query initial filter position (2 = LP, 1 = Normal/IR)
+                                        if let Ok(val) = alpaca_get(&alpaca_agent, &ip, port, "filterwheel/0/position", &[("ClientID", "1")]) {
+                                            if let Some(pos) = val.get("Value").and_then(|v| v.as_i64()) {
+                                                t.lp_filter_active = pos == 2;
+                                            }
+                                        }
+
+                                        // Query initial CCD temp
+                                        if let Ok(val) = alpaca_get(&alpaca_agent, &ip, port, "camera/0/ccdtemperature", &[("ClientID", "1")]) {
+                                            if let Some(temp) = val.get("Value").and_then(|v| v.as_f64()) {
+                                                t.temp_c = temp as f32;
+                                            }
+                                        }
+
+                                        t.last_log_message = format!("Yhteys muodostettu kohteeseen {} Alpaca-rajapinnalla ({}:{})!", scope_name, ip, port);
                                     }
                                     Err(e) => {
                                         let mut t = telem_clone.lock().unwrap();
                                         t.connected = false;
                                         t.state = SeestarState::Disconnected;
-                                        t.last_log_message = format!("Yhteysvirhe ({}): {}. Voit käyttää simulaatiotilaa.", scope_name, e);
+                                        t.last_log_message = format!("Alpaca-yhteysvirhe ({}): {}. Varmista että Seestar Alpaca on päällä puhelinsovelluksessa.", scope_name, e);
                                     }
                                 }
                             } else {
-                                let mut t = telem_clone.lock().unwrap();
-                                t.connected = false;
-                                t.state = SeestarState::Disconnected;
-                                t.last_log_message = format!("Virheellinen osoite: {}:{}", ip, port);
+                                // Raw TCP protocols (supports both numeric IPs and hostnames like seestar.local)
+                                let addr_str = format!("{}:{}", ip, port);
+                                let resolved_addr = if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                                    Some(addr)
+                                } else if let Ok(mut addrs) = addr_str.to_socket_addrs() {
+                                    addrs.next()
+                                } else {
+                                    None
+                                };
+
+                                if let Some(addr) = resolved_addr {
+                                    match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
+                                        Ok(mut stream) => {
+                                            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+                                            let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+
+                                            match proto {
+                                                crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                                    let query = serde_json::json!({
+                                                        "id": 100,
+                                                        "method": "get_device_state"
+                                                    });
+                                                    let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
+                                                }
+                                                crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                                    let hello = serde_json::json!({
+                                                        "interface": 10001,
+                                                        "cmd": "connect"
+                                                    });
+                                                    let _ = stream.write_all(format!("{}\r\n", hello).as_bytes());
+                                                }
+                                                _ => {}
+                                            }
+
+                                            active_stream = Some(stream);
+
+                                            let mut t = telem_clone.lock().unwrap();
+                                            t.connected = true;
+                                            t.is_simulation = false;
+                                            t.state = SeestarState::Idle;
+                                            t.last_log_message = format!("Yhteys muodostettu kohteeseen {} ({}:{})!", scope_name, ip, port);
+                                        }
+                                        Err(e) => {
+                                            let mut t = telem_clone.lock().unwrap();
+                                            t.connected = false;
+                                            t.state = SeestarState::Disconnected;
+                                            t.last_log_message = format!("Yhteysvirhe ({}): {}. Voit käyttää simulaatiotilaa.", scope_name, e);
+                                        }
+                                    }
+                                } else {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.connected = false;
+                                    t.state = SeestarState::Disconnected;
+                                    t.last_log_message = format!("Virheellinen osoite: {}:{}", ip, port);
+                                }
                             }
                         }
                         SeestarCommand::Disconnect => {
                             user_disconnected = true;
                             next_reconnect_at = None;
                             active_stream = None;
-                            let mut t = telem_clone.lock().unwrap();
-                            t.connected = false;
-                            t.reconnect_attempts = 0;
-                            t.state = SeestarState::Disconnected;
-                            t.last_log_message = "Yhteys suljettu käyttäjän toimesta.".to_string();
+                            let (ip, port, proto) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.connected = false;
+                                t.reconnect_attempts = 0;
+                                t.state = SeestarState::Disconnected;
+                                t.last_log_message = "Yhteys suljettu käyttäjän toimesta.".to_string();
+                                (t.ip_address.clone(), t.port, t.protocol)
+                            };
+                            if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                let disc_form = [("Connected", "false"), ("ClientID", "1"), ("ClientTransactionID", "1")];
+                                let _ = alpaca_put(&alpaca_agent, &ip, port, "telescope/0/connected", &disc_form);
+                                let _ = alpaca_put(&alpaca_agent, &ip, port, "camera/0/connected", &disc_form);
+                            }
                         }
                         SeestarCommand::SetSimulation(sim) => {
                             let mut t = telem_clone.lock().unwrap();
@@ -336,28 +453,40 @@ impl SeestarClient {
                                 t.reconnect_attempts = 0;
                                 t.state = SeestarState::Idle;
                                 t.last_log_message = "Simulaatiotila aktivoitu. Kaukoputki virtuaalisesti valmiina!".to_string();
-                            } else if active_stream.is_none() {
+                            } else if active_stream.is_none() && !t.connected {
                                 t.connected = false;
                                 t.state = SeestarState::Disconnected;
                                 t.last_log_message = "Simulaatiotila poistettu käytöstä. Yhdistä Seestariin IP-osoitteella.".to_string();
                             }
                         }
                         SeestarCommand::GoTo { name, ra, dec } => {
-                            let mut t = telem_clone.lock().unwrap();
-                            let start_ra = t.current_ra;
-                            let start_dec = t.current_dec;
-                            t.target_name = name.clone();
-                            t.target_ra = ra;
-                            t.target_dec = dec;
-                            t.state = SeestarState::Slewing;
-                            t.last_log_message = format!("GoTo: Käännytään kohteeseen {} (RA {:.2}h, Dec {:.2}°)...", name, ra, dec);
-                            let is_sim = t.is_simulation;
-                            drop(t);
+                            let (start_ra, start_dec, is_sim, ip, port, proto) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                let s_ra = t.current_ra;
+                                let s_dec = t.current_dec;
+                                t.target_name = name.clone();
+                                t.target_ra = ra;
+                                t.target_dec = dec;
+                                t.state = SeestarState::Slewing;
+                                t.last_log_message = format!("GoTo: Käännytään kohteeseen {} (RA {:.2}h, Dec {:.2}°)...", name, ra, dec);
+                                (s_ra, s_dec, t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
+                            };
 
                             if is_sim {
                                 slew_start = Some((Instant::now(), start_ra, start_dec, ra, dec));
+                            } else if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                // Unpark first if parked
+                                let _ = alpaca_put(&alpaca_agent, &ip, port, "telescope/0/unpark", &[("ClientID", "1"), ("ClientTransactionID", "100")]);
+                                let ra_str = ra.to_string();
+                                let dec_str = dec.to_string();
+                                let _ = alpaca_put(
+                                    &alpaca_agent,
+                                    &ip,
+                                    port,
+                                    "telescope/0/slewtocoordinatesasync",
+                                    &[("RightAscension", &ra_str), ("Declination", &dec_str), ("ClientID", "1"), ("ClientTransactionID", "101")],
+                                );
                             } else if let Some(stream) = &mut active_stream {
-                                let proto = { telem_clone.lock().unwrap().protocol };
                                 match proto {
                                     crate::telescope::mosaic::TelescopeProtocol::Seestar => {
                                         let payload = serde_json::json!({
@@ -383,35 +512,36 @@ impl SeestarClient {
                                         let msg = format!("{}\r\n", payload);
                                         let _ = stream.write_all(msg.as_bytes());
                                     }
-                                    crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                        let body = format!("RightAscension={}&Declination={}&ClientID=1&ClientTransactionID=101", ra, dec);
-                                        let msg = format!(
-                                            "PUT /api/v1/telescope/0/slewtocoordinatesasync HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                            body.len(), body
-                                        );
-                                        let _ = stream.write_all(msg.as_bytes());
-                                    }
-                                    crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                    _ => {}
                                 }
                             }
                         }
                         SeestarCommand::StartStacking => {
-                            let mut t = telem_clone.lock().unwrap();
-                            let resuming_same_target = t.stacked_frames > 0 && (t.state == SeestarState::Tracking || t.state == SeestarState::Focusing || t.state == SeestarState::Dithering);
-                            t.state = SeestarState::Stacking;
-                            if !resuming_same_target {
-                                t.stacked_frames = 0;
-                                t.total_stack_seconds = 0;
-                            }
-                            t.last_log_message = format!("Pinoaminen käynnissä kohteelle: {}!", t.target_name);
-                            let is_sim = t.is_simulation;
-                            let dither_cfg = t.dither_config;
-                            let proto = t.protocol;
-                            drop(t);
+                            let (is_sim, ip, port, proto) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                let resuming_same_target = t.stacked_frames > 0 && (t.state == SeestarState::Tracking || t.state == SeestarState::Focusing || t.state == SeestarState::Dithering);
+                                t.state = SeestarState::Stacking;
+                                if !resuming_same_target {
+                                    t.stacked_frames = 0;
+                                    t.total_stack_seconds = 0;
+                                }
+                                t.last_log_message = format!("Pinoaminen käynnissä kohteelle: {}!", t.target_name);
+                                let _dither_cfg = t.dither_config;
+                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
+                            };
                             stack_timer = Instant::now();
 
                             if !is_sim {
-                                if let Some(stream) = &mut active_stream {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "camera/0/startexposure",
+                                        &[("Duration", "10"), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
+                                    let dither_cfg = { telem_clone.lock().unwrap().dither_config };
                                     match proto {
                                         crate::telescope::mosaic::TelescopeProtocol::Seestar => {
                                             let dither_payload = serde_json::json!({
@@ -442,29 +572,29 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let body = "Duration=10&Light=true&ClientID=1&ClientTransactionID=102";
-                                            let msg = format!(
-                                                "PUT /api/v1/camera/0/startexposure HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                body.len(), body
-                                            );
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                        _ => {}
                                     }
                                 }
                             }
                         }
                         SeestarCommand::StopStacking => {
-                            let mut t = telem_clone.lock().unwrap();
-                            t.state = SeestarState::Tracking;
-                            t.last_log_message = format!("Pinoaminen pysäytetty kohteelle {}. Valotettu {} ruutua.", t.target_name, t.stacked_frames);
-                            let is_sim = t.is_simulation;
-                            let proto = t.protocol;
-                            drop(t);
+                            let (is_sim, ip, port, proto) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.state = SeestarState::Tracking;
+                                t.last_log_message = format!("Pinoaminen pysäytetty kohteelle {}. Valotettu {} ruutua.", t.target_name, t.stacked_frames);
+                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
+                            };
 
                             if !is_sim {
-                                if let Some(stream) = &mut active_stream {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "camera/0/stopexposure",
+                                        &[("ClientID", "1"), ("ClientTransactionID", "103")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
                                     match proto {
                                         crate::telescope::mosaic::TelescopeProtocol::Seestar => {
                                             let payload = serde_json::json!({
@@ -482,30 +612,34 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let body = "ClientID=1&ClientTransactionID=103";
-                                            let msg = format!(
-                                                "PUT /api/v1/camera/0/stopexposure HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                body.len(), body
-                                            );
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                        _ => {}
                                     }
                                 }
                             }
                         }
                         SeestarCommand::Park => {
-                            let mut t = telem_clone.lock().unwrap();
-                            t.state = SeestarState::Parked;
-                            let scope_name = t.scope_model.display_short();
-                            t.last_log_message = format!("{} ajettu parkkiasentoon (virransäästö / suoja).", scope_name);
-                            let is_sim = t.is_simulation;
-                            let proto = t.protocol;
-                            drop(t);
+                            let (ip, port, proto, is_sim, scope_name) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.state = SeestarState::Parked;
+                                let s_name = t.scope_model.display_short();
+                                t.last_log_message = format!("{} ajettu parkkiasentoon (virransäästö / suoja).", s_name);
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation, s_name)
+                            };
 
                             if !is_sim {
-                                if let Some(stream) = &mut active_stream {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    let res = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "telescope/0/park",
+                                        &[("ClientID", "1"), ("ClientTransactionID", "104")],
+                                    );
+                                    if let Err(e) = res {
+                                        let mut t = telem_clone.lock().unwrap();
+                                        t.last_log_message = format!("Park-virhe ({}): {}", scope_name, e);
+                                    }
+                                } else if let Some(stream) = &mut active_stream {
                                     match proto {
                                         crate::telescope::mosaic::TelescopeProtocol::Seestar => {
                                             let payload = serde_json::json!({
@@ -523,106 +657,122 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let body = "ClientID=1&ClientTransactionID=104";
-                                            let msg = format!(
-                                                "PUT /api/v1/telescope/0/park HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                body.len(), body
-                                            );
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                        _ => {}
                                     }
+                                }
+                            }
+                        }
+                        SeestarCommand::Unpark => {
+                            let (ip, port, proto, is_sim, scope_name) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.state = SeestarState::Idle;
+                                let s_name = t.scope_model.display_short();
+                                t.last_log_message = format!("{} avattu parkkiasennosta.", s_name);
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation, s_name)
+                            };
+
+                            if !is_sim && proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                let res = alpaca_put(
+                                    &alpaca_agent,
+                                    &ip,
+                                    port,
+                                    "telescope/0/unpark",
+                                    &[("ClientID", "1"), ("ClientTransactionID", "105")],
+                                );
+                                if let Err(e) = res {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.last_log_message = format!("Avausvirhe ({}): {}", scope_name, e);
                                 }
                             }
                         }
                         SeestarCommand::ToggleLpFilter => {
-                            let mut t = telem_clone.lock().unwrap();
-                            t.lp_filter_active = !t.lp_filter_active;
-                            let active = t.lp_filter_active;
-                            t.last_log_message = format!("Valosaastesuodatin (LP / Dual-band): {}", if active { "PÄÄLLÄ" } else { "POIS" });
-                            let is_sim = t.is_simulation;
-                            let proto = t.protocol;
-                            drop(t);
+                            let (ip, port, proto, is_sim, active) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.lp_filter_active = !t.lp_filter_active;
+                                let cur = t.lp_filter_active;
+                                t.last_log_message = format!("Valosaastesuodatin (LP / Dual-band): {}", if cur { "PÄÄLLÄ" } else { "POIS" });
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation, cur)
+                            };
 
                             if !is_sim {
-                                if let Some(stream) = &mut active_stream {
-                                    match proto {
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let pos = if active { 1 } else { 0 };
-                                            let body = format!("Position={}&ClientID=1&ClientTransactionID=105", pos);
-                                            let msg = format!(
-                                                "PUT /api/v1/filterwheel/0/position HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                body.len(), body
-                                            );
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        _ => {
-                                            let filter_name = if active { "lp" } else { "clear" };
-                                            let payload = serde_json::json!({
-                                                "id": 105,
-                                                "method": "set_filter",
-                                                "params": { "filter": filter_name }
-                                            });
-                                            let msg = format!("{}\r\n", payload);
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                    }
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    // 2 = LP filter, 1 = Normal/IR filter on Seestar S30/S50
+                                    let pos_str = if active { "2" } else { "1" };
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "filterwheel/0/position",
+                                        &[("Position", pos_str), ("ClientID", "1"), ("ClientTransactionID", "105")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
+                                    let filter_name = if active { "lp" } else { "clear" };
+                                    let payload = serde_json::json!({
+                                        "id": 105,
+                                        "method": "set_filter",
+                                        "params": { "filter": filter_name }
+                                    });
+                                    let msg = format!("{}\r\n", payload);
+                                    let _ = stream.write_all(msg.as_bytes());
                                 }
                             }
                         }
                         SeestarCommand::SetLpFilter(active) => {
-                            let mut t = telem_clone.lock().unwrap();
-                            if t.lp_filter_active != active {
-                                t.lp_filter_active = active;
-                                t.last_log_message = format!("Valosaastesuodatin (LP / Dual-band): {}", if active { "PÄÄLLÄ" } else { "POIS" });
-                                let is_sim = t.is_simulation;
-                                let proto = t.protocol;
-                                drop(t);
+                            let (ip, port, proto, is_sim) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                if t.lp_filter_active != active {
+                                    t.lp_filter_active = active;
+                                    t.last_log_message = format!("Valosaastesuodatin (LP / Dual-band): {}", if active { "PÄÄLLÄ" } else { "POIS" });
+                                }
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation)
+                            };
 
-                                if !is_sim {
-                                    if let Some(stream) = &mut active_stream {
-                                        match proto {
-                                            crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                                let pos = if active { 1 } else { 0 };
-                                                let body = format!("Position={}&ClientID=1&ClientTransactionID=105", pos);
-                                                let msg = format!(
-                                                    "PUT /api/v1/filterwheel/0/position HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                    body.len(), body
-                                                );
-                                                let _ = stream.write_all(msg.as_bytes());
-                                            }
-                                            _ => {
-                                                let filter_name = if active { "lp" } else { "clear" };
-                                                let payload = serde_json::json!({
-                                                    "id": 105,
-                                                    "method": "set_filter",
-                                                    "params": { "filter": filter_name }
-                                                });
-                                                let msg = format!("{}\r\n", payload);
-                                                let _ = stream.write_all(msg.as_bytes());
-                                            }
-                                        }
-                                    }
+                            if !is_sim {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    let pos_str = if active { "2" } else { "1" };
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "filterwheel/0/position",
+                                        &[("Position", pos_str), ("ClientID", "1"), ("ClientTransactionID", "105")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
+                                    let filter_name = if active { "lp" } else { "clear" };
+                                    let payload = serde_json::json!({
+                                        "id": 105,
+                                        "method": "set_filter",
+                                        "params": { "filter": filter_name }
+                                    });
+                                    let msg = format!("{}\r\n", payload);
+                                    let _ = stream.write_all(msg.as_bytes());
                                 }
                             }
                         }
                         SeestarCommand::AutoFocus => {
-                            let mut t = telem_clone.lock().unwrap();
-                            let prev_state = match t.state {
-                                SeestarState::Focusing => SeestarState::Tracking,
-                                ref s => s.clone(),
+                            let (is_sim, ip, port, proto, prev_state) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                let p_state = match t.state {
+                                    SeestarState::Focusing => SeestarState::Tracking,
+                                    ref s => s.clone(),
+                                };
+                                t.state = SeestarState::Focusing;
+                                t.last_log_message = "Automaattitarkennus (Auto-Focus) käynnistetty...".to_string();
+                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol, p_state)
                             };
-                            t.state = SeestarState::Focusing;
-                            t.last_log_message = "Automaattitarkennus (Auto-Focus) käynnistetty...".to_string();
-                            let is_sim = t.is_simulation;
-                            drop(t);
 
                             focus_start = Some((Instant::now(), prev_state));
 
                             if !is_sim {
-                                if let Some(stream) = &mut active_stream {
-                                    let proto = { telem_clone.lock().unwrap().protocol };
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "focuser/0/move",
+                                        &[("Position", "1196"), ("ClientID", "1"), ("ClientTransactionID", "106")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
                                     match proto {
                                         crate::telescope::mosaic::TelescopeProtocol::Seestar => {
                                             let payload = serde_json::json!({
@@ -640,15 +790,7 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let body = "Position=1450&ClientID=1&ClientTransactionID=106";
-                                            let msg = format!(
-                                                "PUT /api/v1/focuser/0/move HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                body.len(), body
-                                            );
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::FolderIngest => {}
+                                        _ => {}
                                     }
                                 }
                             }
@@ -812,116 +954,206 @@ impl SeestarClient {
                     }
                 }
 
-                // Read incoming telemetry & monitor connection health on real Seestar stream
+                // Telemetry and health check on real telescope
                 let mut stream_lost = false;
-                if let Some(stream) = &mut active_stream {
-                    let proto = { telem_clone.lock().unwrap().protocol };
-                    if last_heartbeat.elapsed() > Duration::from_secs(3) {
-                        match proto {
-                            crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                let ip = { telem_clone.lock().unwrap().ip_address.clone() };
-                                let req = format!(
-                                    "GET /api/v1/telescope/0/tracking?ClientID=1&ClientTransactionID=999 HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
-                                    ip
-                                );
-                                if stream.write_all(req.as_bytes()).is_err() {
-                                    stream_lost = true;
-                                }
-                            }
-                            _ => {
-                                let query = serde_json::json!({
-                                    "id": 999,
-                                    "method": "get_device_state"
-                                });
-                                if stream.write_all(format!("{}\r\n", query).as_bytes()).is_err() {
-                                    stream_lost = true;
-                                }
-                            }
-                        }
-                        last_heartbeat = Instant::now();
-                    }
+                let (is_conn, is_sim, cur_proto, cur_ip, cur_port, cur_state) = {
+                    let t = telem_clone.lock().unwrap();
+                    (t.connected, t.is_simulation, t.protocol, t.ip_address.clone(), t.port, t.state.clone())
+                };
 
-                    if !stream_lost {
-                        let mut reader = BufReader::new(stream);
-                        let mut line = String::new();
-                        match reader.read_line(&mut line) {
-                            Ok(0) => {
-                                // EOF: remote closed connection
-                                stream_lost = true;
-                                let is_seestar_raw = { telem_clone.lock().unwrap().protocol == crate::telescope::mosaic::TelescopeProtocol::Seestar };
-                                if is_seestar_raw {
+                if is_conn && !is_sim {
+                    if cur_proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                        if last_heartbeat.elapsed() > Duration::from_millis(1800) {
+                            let mut poll_success = false;
+
+                            // 1. Check park state
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/atpark", &[("ClientID", "1")]) {
+                                poll_success = true;
+                                if let Some(at_park) = val.get("Value").and_then(|v| v.as_bool()) {
                                     let mut t = telem_clone.lock().unwrap();
-                                    t.last_log_message = "Seestar sulki TCP-ohjausportin 4700 (ZWO firmware -suojaus). Ota Seestar Alpaca käyttöön (portti 32323) tai pinoa kuvat Macilla SMB-jaolla.".to_string();
-                                    user_disconnected = true;
+                                    if at_park {
+                                        t.state = SeestarState::Parked;
+                                    } else if t.state == SeestarState::Parked {
+                                        t.state = SeestarState::Idle;
+                                    }
                                 }
                             }
-                            Ok(_) if !line.is_empty() => {
-                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+
+                            // 2. Check slewing state
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/slewing", &[("ClientID", "1")]) {
+                                poll_success = true;
+                                if let Some(slewing) = val.get("Value").and_then(|v| v.as_bool()) {
                                     let mut t = telem_clone.lock().unwrap();
-                                    // Parse ASCOM Alpaca responses
-                                    if let Some(err_num) = val.get("ErrorNumber").and_then(|v| v.as_i64()) {
-                                        if err_num == 0 {
-                                            if let Some(val_obj) = val.get("Value") {
-                                                if let Some(tracking) = val_obj.as_bool() {
-                                                    if tracking && t.state != SeestarState::Stacking && t.state != SeestarState::Slewing {
-                                                        t.state = SeestarState::Tracking;
-                                                    }
-                                                } else if let Some(ra) = val_obj.as_f64() {
-                                                    t.current_ra = ra;
-                                                }
-                                            }
+                                    if slewing {
+                                        t.state = SeestarState::Slewing;
+                                    } else if t.state == SeestarState::Slewing {
+                                        t.state = SeestarState::Tracking;
+                                    }
+                                }
+                            }
+
+                            // 3. Check tracking state (if not parked, slewing, or stacking)
+                            if cur_state != SeestarState::Parked && cur_state != SeestarState::Slewing && cur_state != SeestarState::Stacking {
+                                if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/tracking", &[("ClientID", "1")]) {
+                                    poll_success = true;
+                                    if let Some(tracking) = val.get("Value").and_then(|v| v.as_bool()) {
+                                        let mut t = telem_clone.lock().unwrap();
+                                        if tracking && t.state == SeestarState::Idle {
+                                            t.state = SeestarState::Tracking;
                                         }
                                     }
-                                    // Parse Seestar raw responses & security notices
-                                    if val.get("error").is_some() || line.contains("verify") || line.contains("unauthorized") {
-                                        t.last_log_message = "ZWO Seestar vaatii RSA-varmennuksen portissa 4700. Ota Seestar Alpaca käyttöön (portti 32323) tai käytä SMB-jakoa.".to_string();
-                                        stream_lost = true;
-                                        user_disconnected = true;
+                                }
+                            }
+
+                            // 4. Coordinates
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/rightascension", &[("ClientID", "1")]) {
+                                poll_success = true;
+                                if let Some(ra) = val.get("Value").and_then(|v| v.as_f64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.current_ra = ra;
+                                }
+                            }
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/declination", &[("ClientID", "1")]) {
+                                poll_success = true;
+                                if let Some(dec) = val.get("Value").and_then(|v| v.as_f64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.current_dec = dec;
+                                }
+                            }
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/altitude", &[("ClientID", "1")]) {
+                                if let Some(alt) = val.get("Value").and_then(|v| v.as_f64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.current_alt = alt;
+                                }
+                            }
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "telescope/0/azimuth", &[("ClientID", "1")]) {
+                                if let Some(az) = val.get("Value").and_then(|v| v.as_f64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.current_az = az;
+                                }
+                            }
+
+                            // 5. CCD temperature
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "camera/0/ccdtemperature", &[("ClientID", "1")]) {
+                                if let Some(temp) = val.get("Value").and_then(|v| v.as_f64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.temp_c = temp as f32;
+                                }
+                            }
+
+                            // 6. Filterwheel position
+                            if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "filterwheel/0/position", &[("ClientID", "1")]) {
+                                if let Some(pos) = val.get("Value").and_then(|v| v.as_i64()) {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    if pos == 2 {
+                                        t.lp_filter_active = true;
+                                    } else if pos == 1 {
+                                        t.lp_filter_active = false;
                                     }
-                                    if let Some(result) = val.get("result") {
-                                        if let Some(battery) = result.get("battery").and_then(|v| v.as_u64()) {
-                                            t.battery_pct = battery as u8;
-                                        }
-                                        if let Some(temp) = result.get("temp").and_then(|v| v.as_f64()) {
-                                            t.temp_c = temp as f32;
-                                        }
-                                        if let Some(ra) = result.get("cur_ra").and_then(|v| v.as_f64()) {
-                                            t.current_ra = ra;
-                                        }
-                                        if let Some(dec) = result.get("cur_dec").and_then(|v| v.as_f64()) {
-                                            t.current_dec = dec;
-                                        }
-                                        if let Some(pos) = result.get("focus_pos").and_then(|v| v.as_u64()) {
+                                }
+                            }
+
+                            // 7. Focuser position (if unparked)
+                            if cur_state != SeestarState::Parked {
+                                if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "focuser/0/position", &[("ClientID", "1")]) {
+                                    if let Some(pos) = val.get("Value").and_then(|v| v.as_i64()) {
+                                        if pos > 0 {
+                                            let mut t = telem_clone.lock().unwrap();
                                             t.focus_position = pos as u32;
                                         }
-                                        if let Some(frames) = result.get("stacked_frame").and_then(|v| v.as_u64()) {
-                                            t.stacked_frames = frames as u32;
+                                    }
+                                }
+                            }
+
+                            if poll_success {
+                                alpaca_fail_count = 0;
+                            } else {
+                                alpaca_fail_count += 1;
+                                if alpaca_fail_count >= 5 {
+                                    // 5 consecutive complete polling failures (~9s) means Wi-Fi / power dropped
+                                    stream_lost = true;
+                                }
+                            }
+
+                            last_heartbeat = Instant::now();
+                        }
+                    } else if let Some(stream) = &mut active_stream {
+                        // Raw TCP stream protocol (e.g. port 4700 or DwarfLab)
+                        if last_heartbeat.elapsed() > Duration::from_secs(3) {
+                            let query = serde_json::json!({
+                                "id": 999,
+                                "method": "get_device_state"
+                            });
+                            if stream.write_all(format!("{}\r\n", query).as_bytes()).is_err() {
+                                stream_lost = true;
+                            }
+                            last_heartbeat = Instant::now();
+                        }
+
+                        if !stream_lost {
+                            let mut reader = BufReader::new(stream);
+                            let mut line = String::new();
+                            match reader.read_line(&mut line) {
+                                Ok(0) => {
+                                    stream_lost = true;
+                                    let is_seestar_raw = { telem_clone.lock().unwrap().protocol == crate::telescope::mosaic::TelescopeProtocol::Seestar };
+                                    if is_seestar_raw {
+                                        let mut t = telem_clone.lock().unwrap();
+                                        t.last_log_message = "Seestar sulki TCP-ohjausportin 4700 (ZWO firmware -suojaus). Ota Seestar Alpaca käyttöön (portti 32323) tai pinoa kuvat Macilla SMB-jaolla.".to_string();
+                                        user_disconnected = true;
+                                    }
+                                }
+                                Ok(_) if !line.is_empty() => {
+                                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+                                        let mut t = telem_clone.lock().unwrap();
+                                        if val.get("error").is_some() || line.contains("verify") || line.contains("unauthorized") {
+                                            t.last_log_message = "ZWO Seestar vaatii RSA-varmennuksen portissa 4700. Ota Seestar Alpaca käyttöön (portti 32323) tai käytä SMB-jakoa.".to_string();
+                                            stream_lost = true;
+                                            user_disconnected = true;
                                         }
-                                        if let Some(stage) = result.get("stage").and_then(|v| v.as_str()) {
-                                            match stage {
-                                                "Stack" | "ContinuousExposure" => t.state = SeestarState::Stacking,
-                                                "AutoGoto" => t.state = SeestarState::Slewing,
-                                                "AutoFocus" => {
-                                                    t.state = SeestarState::Focusing;
-                                                }
-                                                "Tracking" => {
-                                                    if t.state == SeestarState::Focusing {
-                                                        t.last_focus_temp_c = Some(t.temp_c);
-                                                        t.last_focus_time = Some(Local::now().format("%H:%M:%S").to_string());
-                                                        focus_start = None;
+                                        if let Some(result) = val.get("result") {
+                                            if let Some(battery) = result.get("battery").and_then(|v| v.as_u64()) {
+                                                t.battery_pct = battery as u8;
+                                            }
+                                            if let Some(temp) = result.get("temp").and_then(|v| v.as_f64()) {
+                                                t.temp_c = temp as f32;
+                                            }
+                                            if let Some(ra) = result.get("cur_ra").and_then(|v| v.as_f64()) {
+                                                t.current_ra = ra;
+                                            }
+                                            if let Some(dec) = result.get("cur_dec").and_then(|v| v.as_f64()) {
+                                                t.current_dec = dec;
+                                            }
+                                            if let Some(pos) = result.get("focus_pos").and_then(|v| v.as_u64()) {
+                                                t.focus_position = pos as u32;
+                                            }
+                                            if let Some(frames) = result.get("stacked_frame").and_then(|v| v.as_u64()) {
+                                                t.stacked_frames = frames as u32;
+                                            }
+                                            if let Some(stage) = result.get("stage").and_then(|v| v.as_str()) {
+                                                match stage {
+                                                    "Stack" | "ContinuousExposure" => t.state = SeestarState::Stacking,
+                                                    "AutoGoto" => t.state = SeestarState::Slewing,
+                                                    "AutoFocus" => t.state = SeestarState::Focusing,
+                                                    "Tracking" => {
+                                                        if t.state == SeestarState::Focusing {
+                                                            t.last_focus_temp_c = Some(t.temp_c);
+                                                            t.last_focus_time = Some(Local::now().format("%H:%M:%S").to_string());
+                                                            focus_start = None;
+                                                        }
+                                                        t.state = SeestarState::Tracking;
                                                     }
-                                                    t.state = SeestarState::Tracking;
+                                                    _ => {}
                                                 }
-                                                _ => {}
                                             }
                                         }
                                     }
                                 }
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                if e.kind() != ErrorKind::WouldBlock && e.kind() != ErrorKind::TimedOut {
-                                    stream_lost = true;
+                                Ok(_) => {}
+                                Err(e) => {
+                                    if e.kind() != ErrorKind::WouldBlock && e.kind() != ErrorKind::TimedOut {
+                                        stream_lost = true;
+                                    }
                                 }
                             }
                         }
@@ -966,40 +1198,40 @@ impl SeestarClient {
                         if !auto_enabled || user_disconnected {
                             next_reconnect_at = None;
                         } else {
-                            let addr_str = format!("{}:{}", ip, port);
-                            let resolved_addr = if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                                Some(addr)
-                            } else if let Ok(mut addrs) = addr_str.to_socket_addrs() {
-                                addrs.next()
-                            } else {
-                                None
-                            };
-
                             let mut reconnected = false;
-                            if let Some(addr) = resolved_addr {
-                                if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
-                                    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-                                    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
 
-                                    match proto {
-                                        crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca => {
-                                            let body = "Connected=true&ClientID=1&ClientTransactionID=1";
-                                            let req = format!(
-                                                "PUT /api/v1/telescope/0/connected HTTP/1.1\r\nHost: {}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{}",
-                                                ip, body.len(), body
-                                            );
-                                            let _ = stream.write_all(req.as_bytes());
-                                        }
-                                        _ => {
-                                            let query = serde_json::json!({
-                                                "id": 999,
-                                                "method": "get_device_state"
-                                            });
-                                            let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
-                                        }
-                                    }
-                                    active_stream = Some(stream);
+                            if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                let connect_form = [("Connected", "true"), ("ClientID", "1"), ("ClientTransactionID", "1")];
+                                if alpaca_put(&alpaca_agent, &ip, port, "telescope/0/connected", &connect_form).is_ok() {
+                                    let _ = alpaca_put(&alpaca_agent, &ip, port, "camera/0/connected", &connect_form);
+                                    let _ = alpaca_put(&alpaca_agent, &ip, port, "filterwheel/0/connected", &connect_form);
+                                    let _ = alpaca_put(&alpaca_agent, &ip, port, "focuser/0/connected", &connect_form);
                                     reconnected = true;
+                                    alpaca_fail_count = 0;
+                                }
+                            } else {
+                                let addr_str = format!("{}:{}", ip, port);
+                                let resolved_addr = if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                                    Some(addr)
+                                } else if let Ok(mut addrs) = addr_str.to_socket_addrs() {
+                                    addrs.next()
+                                } else {
+                                    None
+                                };
+
+                                if let Some(addr) = resolved_addr {
+                                    if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
+                                        let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+                                        let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+
+                                        let query = serde_json::json!({
+                                            "id": 999,
+                                            "method": "get_device_state"
+                                        });
+                                        let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
+                                        active_stream = Some(stream);
+                                        reconnected = true;
+                                    }
                                 }
                             }
 
@@ -1084,6 +1316,10 @@ impl SeestarClient {
 
     pub fn park(&self) {
         let _ = self.command_tx.send(SeestarCommand::Park);
+    }
+
+    pub fn unpark(&self) {
+        let _ = self.command_tx.send(SeestarCommand::Unpark);
     }
 
     pub fn toggle_lp_filter(&self) {

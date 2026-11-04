@@ -375,7 +375,11 @@ impl TelescopeView {
                         client.trigger_dither(telem.dither_config.step_pixels, telem.dither_config.settle_seconds);
                     }
 
-                    if ui.button(crate::i18n::tr("🏠 Parkkiin")).on_hover_text(crate::i18n::tr("Aja kaukoputki turva-asentoon")).clicked() {
+                    if telem.state == SeestarState::Parked {
+                        if ui.button(crate::i18n::tr("🚀 Avaa kaukoputki")).on_hover_text(crate::i18n::tr("Avaa kaukoputki lepoasennosta")).clicked() {
+                            client.unpark();
+                        }
+                    } else if ui.button(crate::i18n::tr("🏠 Parkkiin")).on_hover_text(crate::i18n::tr("Aja kaukoputki turva-asentoon")).clicked() {
                         client.park();
                     }
                 });
