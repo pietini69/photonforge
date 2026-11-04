@@ -240,6 +240,26 @@ impl TelescopeView {
                     }
                 });
 
+                if telem.scope_model.brand() == "ZWO Seestar" {
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(RichText::new(crate::i18n::tr("📁 Yhdistä kuvat Macille (SMB)")).color(Color32::from_rgb(100, 220, 255)).strong())
+                            .on_hover_text(crate::i18n::tr("Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa Macilla!"))
+                            .clicked()
+                        {
+                            LiveIngestManager::open_seestar_smb(&state.seestar_ip);
+                        }
+                    });
+                    ui.label(
+                        RichText::new(crate::i18n::tr(
+                            "💡 Seestar S30/S50: Ohjaa kaukoputkea puhelimen iOS-sovelluksella (GoTo ja seuranta) ja pinoa ruudut tähän Macille SMB-jaolla."
+                        ))
+                        .small()
+                        .color(Color32::from_rgb(130, 185, 230))
+                    );
+                    ui.add_space(2.0);
+                }
+
                 ui.horizontal(|ui| {
                     let mut auto_reconn = telem.auto_reconnect_enabled;
                     if ui

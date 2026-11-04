@@ -779,6 +779,9 @@ pub fn tr(s: &'static str) -> &'static str {
         "🛡 Korjaa optiikan tähtivääristymät" => "🛡 Correct Optical Star Distortions",
         "🟢 Vihreän kohinan poisto (SCNR)" => "🟢 Green Noise Removal (SCNR)",
         "🧩 Mosaiikkien yhdistäminen" => "🧩 Mosaic Stitching",
+        "📁 Yhdistä kuvat Macille (SMB)" => "📁 Connect Image Share to Mac (SMB)",
+        "Avaa Seestarin jaettu kansio suoraan Finderissä (smb://<IP>/EMMC Images). Tällöin PhotonForge pinoaa ja venyttää kuvat reaaliajassa Macilla!" => "Mount Seestar network share in Finder (smb://<IP>/EMMC Images) for real-time live stacking on Mac!",
+        "💡 Seestar S30/S50: Ohjaa kaukoputkea puhelimen iOS-sovelluksella (GoTo ja seuranta) ja pinoa ruudut tähän Macille SMB-jaolla." => "💡 Seestar S30/S50: Control telescope via mobile iOS app (GoTo/tracking) and live stack frames on Mac via SMB share.",
         _ => s,
     }
 }

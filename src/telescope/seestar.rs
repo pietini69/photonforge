@@ -250,7 +250,7 @@ impl SeestarClient {
                             let proto = t.protocol;
                             let scope_name = t.scope_model.display_short();
                             t.last_log_message = format!("Yhdistetään kohteeseen {} ({}:{})...", scope_name, ip, port);
-                            let dither_cfg = t.dither_config;
+                            let _dither_cfg = t.dither_config;
                             drop(t);
 
                             // Attempt real TCP connection
@@ -263,19 +263,12 @@ impl SeestarClient {
 
                                         match proto {
                                             crate::telescope::mosaic::TelescopeProtocol::Seestar => {
-                                                // Push initial dither config to Seestar firmware
-                                                let dither_payload = serde_json::json!({
-                                                    "id": 107,
-                                                    "method": "set_setting",
-                                                    "params": {
-                                                        "dither": {
-                                                            "enabled": dither_cfg.enabled,
-                                                            "pix": dither_cfg.step_pixels,
-                                                            "interval": dither_cfg.interval_frames
-                                                        }
-                                                    }
+                                                // Query device status instead of immediately modifying settings
+                                                let query = serde_json::json!({
+                                                    "id": 100,
+                                                    "method": "get_device_state"
                                                 });
-                                                let _ = stream.write_all(format!("{}\r\n", dither_payload).as_bytes());
+                                                let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
                                             }
                                             crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
                                                 let hello = serde_json::json!({
@@ -796,10 +789,21 @@ impl SeestarClient {
                             Ok(0) => {
                                 // EOF: remote closed connection
                                 stream_lost = true;
+                                let is_seestar = { telem_clone.lock().unwrap().protocol == crate::telescope::mosaic::TelescopeProtocol::Seestar };
+                                if is_seestar {
+                                    let mut t = telem_clone.lock().unwrap();
+                                    t.last_log_message = "Seestar sulki TCP-ohjausportin 4700 (ZWO firmware -suojaus). Ohjaa kaukoputkea iOS-sovelluksella ja pinoa kuvat Macilla SMB-jaolla.".to_string();
+                                    user_disconnected = true;
+                                }
                             }
                             Ok(_) if !line.is_empty() => {
                                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
                                     let mut t = telem_clone.lock().unwrap();
+                                    if val.get("error").is_some() || line.contains("verify") || line.contains("unauthorized") {
+                                        t.last_log_message = "ZWO Seestar vaatii RSA-varmennuksen portissa 4700. Ohjaa kaukoputkea virallisella sovelluksella ja käytä PhotonForgea pinoamiseen (Kuvien lataus Macille / SMB-jako).".to_string();
+                                        stream_lost = true;
+                                        user_disconnected = true;
+                                    }
                                     if let Some(result) = val.get("result") {
                                         if let Some(battery) = result.get("battery").and_then(|v| v.as_u64()) {
                                             t.battery_pct = battery as u8;
