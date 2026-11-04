@@ -10,9 +10,27 @@ pub enum UiLang {
 static CURRENT_LANG: AtomicU8 = AtomicU8::new(0); // Default to English for global release
 
 pub fn init_from_env() {
-    if let Ok(lang) = std::env::var("LANG") {
-        if lang.to_lowercase().starts_with("fi") {
-            CURRENT_LANG.store(UiLang::Finnish as u8, Ordering::Relaxed);
+    for var in &["LANG", "LC_ALL", "LC_MESSAGES"] {
+        if let Ok(lang) = std::env::var(var) {
+            if lang.to_lowercase().starts_with("fi") {
+                CURRENT_LANG.store(UiLang::Finnish as u8, Ordering::Relaxed);
+                return;
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLocale"])
+            .output()
+        {
+            if let Ok(s) = std::str::from_utf8(&output.stdout) {
+                if s.trim().to_lowercase().starts_with("fi") {
+                    CURRENT_LANG.store(UiLang::Finnish as u8, Ordering::Relaxed);
+                    return;
+                }
+            }
         }
     }
 }
@@ -688,6 +706,79 @@ pub fn tr(s: &'static str) -> &'static str {
         "• Vaonis Vespera II / Pro ja Celestron Origin" => "• Vaonis Vespera II / Pro and Celestron Origin",
         "• ASCOM Alpaca -jalustat ja manuaaliset kamerat" => "• ASCOM Alpaca mounts and manual cameras",
         "Ei kuvaa ladattuna. Avaa kuvatiedostoja yläpalkista tai raahaa ne tähän." => "No image loaded. Open images from the top toolbar or drag and drop files here.",
+        "(satelliitit ja tähdet)" => "(satellites and stars)",
+        "(tummat pisteet)" => "(dark spots)",
+        "2x Drizzle (Kaksinkertainen resoluutio)" => "2x Drizzle (Double Resolution)",
+        "2x Drizzle muodostaa alipikselisiirtymistä kaksinkertaisen resoluution ja pyöreämmät tähdet." => "2x Drizzle reconstructs double resolution and rounder stars from dithered sub-pixel shifts.",
+        "Alaraja (Sigma): " => "Low Sigma: ",
+        "Ei yhteyttä" => "Disconnected",
+        "HSO-paletti: R = Ha, G = SII, B = OIII" => "HSO palette: R = Ha, G = SII, B = OIII",
+        "Hubble-paletti: R = SII, G = Ha, B = OIII" => "Hubble palette: R = SII, G = Ha, B = OIII",
+        "Hylkäysrajat (Sigma):" => "Rejection Limits (Sigma):",
+        "Keskiarvo" => "Average",
+        "Keskisävyt:" => "Midtones:",
+        "Kirkkaat sävyt:" => "Highlights:",
+        "Kohdistaa kanavat automaattisesti punaisen kanavan koordinaatistoon." => "Automatically aligns channels to the red channel coordinate frame.",
+        "Korjaa kentänkiertymän ja jalustan seurantavirheet ennen pinoamista." => "Corrects field rotation and tracking errors before stacking.",
+        "Kuva" => "Image",
+        "Leikkaa automaattisesti pois osittaisen peiton epätasaiset reunat." => "Automatically crops uneven borders with partial frame coverage.",
+        "Lue ja pinoa kansion kaikki kuvatiedostot" => "Read and stack all image files in the folder",
+        "Mediaani" => "Median",
+        "Minimi/Maksimi -hylkäys" => "Min/Max Rejection",
+        "Palauta oletukset" => "Reset to Defaults",
+        "Pinotaan kukin suodatinryhmä automaattisesti erilliseksi master-kuvaksi" => "Stacks each filter group automatically into a separate master frame",
+        "Pinottavia kuvia" => "Images to Stack",
+        "Poista luminanssi käytöstä" => "Disable Luminance",
+        "Punaisen paino (R):" => "Red (R) Weight:",
+        "Sigma-hylkäys (Suositus)" => "Sigma Clipping (Recommended)",
+        "Sinisen paino (B):" => "Blue (B) Weight:",
+        "Suorita pinoaminen" => "Run Stacking",
+        "SyQon tarjoaa ilmaiset paikalliset tekoälymallit tähtien poistoon, optiikan korjaukseen ja kohinanpoistoon." => "SyQon provides local AI models for star removal, optical correction, and deep denoising.",
+        "Syy" => "Reason",
+        "Tasaa kanavien taustat ja sirontatasot ennen yhdistämistä värivääristymien välttämiseksi." => "Matches channel background and scatter levels prior to combination to avoid color casts.",
+        "Tasaa taustataivaan valoisuuden eri öiltä otetuissa kuvissa." => "Normalizes sky background brightness across multi-night sessions.",
+        "Taustan tavoitetummuus:" => "Target Background:",
+        "Täysi LRGB: R, G, B ja luminanssi L" => "Full LRGB: R, G, B and Luminance L",
+        "Varjot:" => "Shadows:",
+        "Vihreän paino (G):" => "Green (G) Weight:",
+        "Viimeisin ruutu" => "Latest Frame",
+        "Värikylläisyyden korostus:" => "Saturation Boost:",
+        "Yhdistä mosaiikki" => "Stitch Mosaic",
+        "Yhdistää useat eri taivaanaloihin osoittavat ruudut laajennetulle yhteiselle kankaalle tähtikohdistuksen ja saumahäivytyksen avulla." => "Stitches multiple overlapping sky panels into an expanded canvas with star alignment and seam blending.",
+        "Yläraja (Sigma): " => "High Sigma: ",
+        "⇱ Avaa SyQon Studio -editori" => "⇱ Open SyQon Studio Editor",
+        "⚖️ Kanavapainotukset ja asetukset:" => "⚖️ Channel Weights & Settings:",
+        "⚙️ Automaattinen venytys:" => "⚙️ Automatic Stretch:",
+        "⚡ Laske automaattivenytys" => "⚡ Calculate Auto-Stretch",
+        "⚡ Näyttövenytys (STF)" => "⚡ Screen Transfer Function (STF)",
+        "✂️ Automaattinen rajaus" => "✂️ Auto-Crop",
+        "✂️ Automaattinen reunojen rajaus" => "✂️ Auto-Crop Borders",
+        "✂️ Kuvan rajaus" => "✂️ Crop Image",
+        "✨ Axiom: Tähtien poisto ja erottelu" => "✨ Axiom: Star Removal & Separation",
+        "✨ Kohdista tähdet automaattisesti" => "✨ Automatic Star Alignment",
+        "✨ Tähtien automaattinen kohdistus" => "✨ Automatic Star Alignment",
+        "⭐ Tähdet (referenssi / uusin):" => "⭐ Stars (Reference / Latest):",
+        "🌊 Prism: Syvä tekoälykohinanpoisto" => "🌊 Prism: Deep Neural Denoise",
+        "🌌 Deep Gradient: Tekoälytaustatasaus" => "🌌 Deep Gradient: AI Background Flattening",
+        "🌌 Kuvien pinoaminen" => "🌌 Image Stacking",
+        "🌌 SyQon-tekoälytyökalut" => "🌌 SyQon AI Neural Suite",
+        "🌐 Tasaa kanavien taustatasot" => "🌐 Match Channel Backgrounds",
+        "🌐 Taustataivaan tasoitus" => "🌐 Sky Background Normalization",
+        "🌟 Erottele tähdet omaksi kuvakseen" => "🌟 Extract Stars to Separate Layer",
+        "🎨 Valmiit väripaletit:" => "🎨 Preset Color Palettes:",
+        "🏷 Havaitut suodatinryhmät:" => "🏷 Detected Filter Groups:",
+        "💾 Tee venytyksestä pysyvä (Histogrammi)" => "💾 Make Stretch Permanent (Histogram)",
+        "📂 Lue ja pinoa kansiosta" => "📂 Read & Stack from Folder",
+        "📈 Kohinasuhteen parannus (SNR):" => "📈 SNR Improvement:",
+        "📊 Pinoamismenetelmä ja hylkäys:" => "📊 Stacking Method & Rejection:",
+        "🔍 Terävöitä kohteita (Deblur)" => "🔍 Deconvolution & Deblur",
+        "🔭 Parallax: Tähtien korjaus ja terävöitys" => "🔭 Parallax: Star Fix & Sharpening",
+        "🚀 Poista tähdet (Axiom)" => "🚀 Remove Stars (Axiom)",
+        "🚀 Suorita Parallax-parannus" => "🚀 Run Parallax Enhancement",
+        "🚀 Suorita Prism-kohinanpoisto" => "🚀 Run Prism Denoising",
+        "🛡 Korjaa optiikan tähtivääristymät" => "🛡 Correct Optical Star Distortions",
+        "🟢 Vihreän kohinan poisto (SCNR)" => "🟢 Green Noise Removal (SCNR)",
+        "🧩 Mosaiikkien yhdistäminen" => "🧩 Mosaic Stitching",
         _ => s,
     }
 }
