@@ -2140,9 +2140,9 @@ impl eframe::App for PhotonForgeApp {
 
         // Left Controls Panel
         if self.show_sidebar {
-            egui::SidePanel::left("left_sidebar_panel_v4")
-                .default_width(430.0)
-                .width_range(370.0..=750.0)
+            egui::SidePanel::left("left_sidebar_panel_v6")
+                .default_width(400.0)
+                .width_range(320.0..=650.0)
                 .resizable(true)
                 .frame(egui::Frame::side_top_panel(&ctx.style()).fill(Color32::from_rgb(22, 25, 34)))
                 .show(ctx, |ui| {
@@ -2150,7 +2150,7 @@ impl eframe::App for PhotonForgeApp {
 
                     // Tab buttons
                     ui.scope(|ui| {
-                        ui.set_width(ui.available_width());
+                        ui.set_max_width(ui.available_width());
                         ui.horizontal_wrapped(|ui| {
                             ui.selectable_value(&mut self.active_tab, ActiveTab::Files, crate::i18n::tr("📁 Kuvat"));
                             ui.selectable_value(&mut self.active_tab, ActiveTab::Stf, "⚡ STF");
@@ -2568,7 +2568,7 @@ impl eframe::App for PhotonForgeApp {
                     });
 
                     ui.group(|ui| {
-                        ui.set_width(ui.available_width());
+                        ui.set_max_width(ui.available_width());
                         ui.label(RichText::new(crate::i18n::tr("Pikapyöritys 90° / 180° ja peilaus:")).strong());
                         ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
@@ -2601,7 +2601,7 @@ impl eframe::App for PhotonForgeApp {
                     ui.add_space(8.0);
 
                     ui.group(|ui| {
-                        ui.set_width(ui.available_width());
+                        ui.set_max_width(ui.available_width());
                         ui.label(RichText::new(crate::i18n::tr("Vapaa kulma (Arbitrary Rotation):")).strong());
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
@@ -2684,7 +2684,7 @@ impl PhotonForgeApp {
 
                 ui.add_space(6.0);
                 ui.group(|ui| {
-                    ui.set_width(ui.available_width());
+                    ui.set_max_width(ui.available_width());
                     ui.horizontal(|ui| {
                         if ui
                             .button(RichText::new("🌐 Avaa nova.astrometry.net/api_help").strong())
@@ -2699,7 +2699,7 @@ impl PhotonForgeApp {
 
                 ui.add_space(6.0);
                 ui.group(|ui| {
-                    ui.set_width(ui.available_width());
+                    ui.set_max_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.strong(crate::i18n::tr("API-avain (API Key):"));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2855,7 +2855,7 @@ impl PhotonForgeApp {
     }
 
     fn ui_files_tab(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
         ui.heading(crate::i18n::tr("📁 Kuvat"));
         let count_str = if self.images.is_empty() {
             crate::i18n::tr("Ei kuvia työtilassa").to_string()
@@ -2886,7 +2886,7 @@ impl PhotonForgeApp {
         if self.images.is_empty() && !self.is_loading_files {
             ui.add_space(8.0);
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
                 ui.vertical(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Kuvalista on tyhjä.")).color(Color32::from_rgb(255, 200, 100)));
                     ui.add_space(2.0);
@@ -2898,7 +2898,7 @@ impl PhotonForgeApp {
         if self.is_loading_files {
             ui.add_space(6.0);
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.spinner();
                     if let Ok(lock) = self.load_progress.lock() {
@@ -2922,7 +2922,7 @@ impl PhotonForgeApp {
             let is_selected = i == self.active_image_index;
 
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
 
                 let badge = if let Some(ref filt) = img.metadata.filter_name {
                     if img.channels == 3 {
@@ -3063,18 +3063,14 @@ impl PhotonForgeApp {
     }
 
     fn ui_stf_tab(&mut self, ui: &mut egui::Ui) {
-        let tab_w = ui.available_width();
-        ui.set_width(tab_w);
-        ui.set_max_width(tab_w);
+        ui.set_max_width(ui.available_width());
         ui.heading(crate::i18n::tr("⚡ Näyttövenytys (STF)"));
         ui.label(RichText::new(crate::i18n::tr("Reaaliaikainen näyttövenytys muuttamatta alkuperäistä raw-dataa.")).small().color(Color32::from_rgb(160, 180, 210)));
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("⚙️ Automaattinen venytys:"));
             ui.add_space(4.0);
             ui.checkbox(&mut self.stf_params.enabled, crate::i18n::tr("STF käytössä"));
@@ -3117,10 +3113,8 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🎚 Manuaaliset säätimet:"));
             ui.add_space(4.0);
 
@@ -3178,7 +3172,7 @@ impl PhotonForgeApp {
     }
 
     fn ui_stacking_subtab_standard(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
         ui.heading(crate::i18n::tr("🌌 Kuvien pinoaminen"));
         ui.label(format!("{}: {}", crate::i18n::tr("Pinottavia kuvia"), self.images.len()));
 
@@ -3191,7 +3185,7 @@ impl PhotonForgeApp {
         if filter_counts.len() > 1 {
             ui.add_space(6.0);
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
                 ui.strong(crate::i18n::tr("🏷 Havaitut suodatinryhmät:"));
                 let mut summary = Vec::new();
                 for (filt, count) in &filter_counts {
@@ -3235,7 +3229,7 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("⚙️ Kohdistus & Normalisointi:"));
 
             ui.checkbox(&mut self.stacking_config.align_stars, crate::i18n::tr("✨ Tähtien automaattinen kohdistus"));
@@ -3256,7 +3250,7 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("📊 Pinoamismenetelmä ja hylkäys:"));
             ui.add_space(2.0);
             ui.radio_value(&mut self.stacking_config.method, StackingMethod::SigmaClipping, crate::i18n::tr("Sigma-hylkäys (Suositus)"));
@@ -3274,7 +3268,7 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("🔍 Resoluution skaalaus (Drizzle):"));
             ui.horizontal_wrapped(|ui| {
                 ui.radio_value(&mut self.stacking_config.drizzle_scale, 1, crate::i18n::tr("1x Normaali"));
@@ -3286,7 +3280,7 @@ impl PhotonForgeApp {
         ui.add_space(16.0);
         if self.is_stacking {
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
                 ui.heading(RichText::new(crate::i18n::tr("⏳ Pinoaminen käynnissä...")).color(Color32::from_rgb(100, 220, 255)));
                 if let Ok(lock) = self.stacking_progress.lock() {
                     if let Some(p) = lock.as_ref() {
@@ -3333,13 +3327,13 @@ impl PhotonForgeApp {
     }
 
     fn ui_stacking_subtab_mosaic(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
         ui.heading(crate::i18n::tr("🧩 Mosaiikkien yhdistäminen"));
         ui.label(RichText::new(crate::i18n::tr("Yhdistää useat eri taivaanaloihin osoittavat ruudut laajennetulle yhteiselle kankaalle tähtikohdistuksen ja saumahäivytyksen avulla.")).small().color(Color32::from_rgb(160, 180, 210)));
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(format!("{}: {}", crate::i18n::tr("Valmiit ruudut muistissa"), self.images.len()));
             if self.images.is_empty() {
                 ui.label(RichText::new(crate::i18n::tr("Lataa mosaiikkiruudut (FITS/TIFF) yläpalkin 'Avaa kuvia' -painikkeella.")).color(Color32::from_rgb(255, 200, 100)));
@@ -3357,7 +3351,7 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("⚙️ Yhdistämisasetukset:"));
 
             ui.add_space(4.0);
@@ -3376,7 +3370,7 @@ impl PhotonForgeApp {
         ui.add_space(16.0);
         if self.is_stacking {
             ui.group(|ui| {
-                ui.set_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
                 ui.heading(RichText::new(crate::i18n::tr("⏳ Mosaiikkia yhdistetään...")).color(Color32::from_rgb(100, 220, 255)));
                 if let Ok(lock) = self.stacking_progress.lock() {
                     if let Some(p) = lock.as_ref() {
@@ -3442,12 +3436,12 @@ impl PhotonForgeApp {
     }
 
     fn ui_live_stacking_sidebar(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
         let stats = self.live_stacker.get_stats();
         let mut cfg = self.live_stacker.get_config();
 
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.heading(RichText::new(crate::i18n::tr("⚡ Live-pinoaminen")).color(Color32::from_rgb(100, 220, 255)).strong());
                 if stats.is_running {
@@ -3523,7 +3517,7 @@ impl PhotonForgeApp {
 
         // Statistics Group
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("📊 Pinon tilastot"));
             ui.add_space(2.0);
 
@@ -3591,7 +3585,7 @@ impl PhotonForgeApp {
 
         // Settings Group
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("⚙ Live-pinoamisen asetukset"));
             ui.add_space(2.0);
 
@@ -3714,7 +3708,7 @@ impl PhotonForgeApp {
     }
 
     fn ui_channel_combination_tab(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
         ui.heading(crate::i18n::tr("🌈 Kanavayhdistys (LRGB & SHO / HOO / HSO)"));
         ui.label(
             RichText::new(crate::i18n::tr("Yhdistä monokromisuodattimet (R, G, B, L, Ha, OIII, SII) täyden värispektrin värikuvaksi."))
@@ -3726,7 +3720,7 @@ impl PhotonForgeApp {
 
         // One-click preset palette buttons
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("🎨 Valmiit väripaletit:"));
             ui.horizontal_wrapped(|ui| {
                 if ui.button(RichText::new("🔭 LRGB / RGBL").strong()).on_hover_text(crate::i18n::tr("Täysi LRGB: R, G, B ja luminanssi L")).clicked() {
@@ -3757,7 +3751,7 @@ impl PhotonForgeApp {
 
         // Channel Selectors
         ui.group(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("📥 Valitse kanavat:"));
 
             // Red Channel
@@ -3794,10 +3788,8 @@ impl PhotonForgeApp {
 
         // Channel Weights & Settings
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("⚖️ Kanavapainotukset ja asetukset:"));
 
             ui.label(RichText::new(crate::i18n::tr("Punaisen paino (R):")).small());
@@ -3852,10 +3844,8 @@ impl PhotonForgeApp {
 
     fn ui_syqon_section(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 86.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 86.0).clamp(90.0, 240.0);
             ui.horizontal(|ui| {
                 ui.heading(RichText::new(crate::i18n::tr("🌌 SyQon-tekoälytyökalut")).color(Color32::from_rgb(140, 220, 255)).strong());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4039,10 +4029,8 @@ impl PhotonForgeApp {
     }
 
     fn ui_processing_tab(&mut self, ui: &mut egui::Ui) {
-        let tab_w = ui.available_width();
-        ui.set_width(tab_w);
-        ui.set_max_width(tab_w);
-        ui.spacing_mut().slider_width = (tab_w - 88.0).max(100.0);
+        ui.set_max_width(ui.available_width());
+        ui.spacing_mut().slider_width = (ui.available_width() - 88.0).clamp(90.0, 240.0);
         ui.heading(crate::i18n::tr("Jälkikäsittelytyökalut"));
 
         // 0. SyQon Neural AI Suite
@@ -4051,9 +4039,7 @@ impl PhotonForgeApp {
 
         // 1. Crop (Manuaalinen ja automaattinen rajaus)
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
+            ui.set_max_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.strong(crate::i18n::tr("✂️ Kuvan rajaus"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4142,10 +4128,8 @@ impl PhotonForgeApp {
 
         // 2. Rotation & Flip (Kuvan pyöritys ja peilaus)
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🔄 Kuvan pyöritys ja peilaus"));
             ui.label(crate::i18n::tr("Käännä tai peilaa kuva optiikan tai sommittelun mukaisesti."));
 
@@ -4196,9 +4180,7 @@ impl PhotonForgeApp {
 
         // Curves Transformation
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
+            ui.set_max_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.strong(crate::i18n::tr("📈 Käyrätyökalu"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4215,9 +4197,7 @@ impl PhotonForgeApp {
 
         // Debayer
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
+            ui.set_max_width(ui.available_width());
             ui.strong(crate::i18n::tr("🟣 Värimatriisin purku (Debayer)"));
             ui.label(crate::i18n::tr("Purkaa värikennon (Seestar, OSC, DSLR) CFA-matriisin värikuvaksi."));
 
@@ -4252,10 +4232,8 @@ impl PhotonForgeApp {
 
         // ABE
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🌐 Automaattinen taustan tasoitus (ABE)"));
             ui.label(crate::i18n::tr("Poistaa valosaasteen, neutraloi taustataivaan ja tasoittaa vinjetoinnin."));
 
@@ -4286,10 +4264,8 @@ impl PhotonForgeApp {
 
         // SCNR
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🟢 Vihreän kohinan poisto (SCNR)"));
             ui.label(crate::i18n::tr("Poistaa avaruuskuvista luonnottoman vihertävän sävyn."));
 
@@ -4306,10 +4282,8 @@ impl PhotonForgeApp {
 
         // Dual-Band Boost
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("⚡ Kapeakaistakorostus (Ha / [OIII])"));
             ui.label(crate::i18n::tr("Erityisesti Seestar S30 ja OSC-kaksoiskaistasuotimille (Ha punainen siipisumu, OIII syaani ydin)."));
 
@@ -4328,10 +4302,8 @@ impl PhotonForgeApp {
 
         // Reflection Nebula Boost (Pleiades / Blue Dust)
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🌌 Heijastussumun korostus (Plejadit / Sininen)"));
             ui.label(crate::i18n::tr("Korostaa tähtien heijastussumujen sinisiä ja syaaneja pölypilviä (M45 Plejadit, Iris, Witch Head)."));
 
@@ -4352,10 +4324,8 @@ impl PhotonForgeApp {
 
         // Arcsinh Stretch
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("📈 Väriä säilyttävä venytys (Arcsinh)"));
             ui.label(crate::i18n::tr("Nostaa himmeät sumut esiin säilyttäen täyden värikylläisyyden."));
 
@@ -4374,10 +4344,8 @@ impl PhotonForgeApp {
 
         // Plate Solve & WCS Celestial Annotation Overlay
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.horizontal(|ui| {
                 ui.strong(crate::i18n::tr("🧭 Tähtikentän tunnistus & Kohteet"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4394,7 +4362,7 @@ impl PhotonForgeApp {
             ui.label(crate::i18n::tr("Ratkaisee kuvan tähtikentän (WCS) ja piirtää kuvan päälle RA/Dec-koordinaattiruudukon, DSO-kohteet ja tunnistetut tähdet."));
 
             ui.add_space(4.0);
-            let combo_w = (gw - 12.0).max(150.0);
+            let combo_w = (ui.available_width() - 12.0).clamp(140.0, 260.0);
             let selected_target_label = match self.wcs_manual_target_idx {
                 Some(idx) => self
                     .sky_catalog
@@ -4464,23 +4432,27 @@ impl PhotonForgeApp {
             }
 
             ui.add_space(4.0);
-            let bw = ui.available_width();
             if self.is_wcs_online_solving {
                 ui.group(|ui| {
-                    ui.set_width(bw);
+                    ui.set_max_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spinner();
                         let status_text = self.wcs_online_status.lock().map(|s| s.clone()).unwrap_or_default();
                         ui.label(RichText::new(status_text).color(Color32::from_rgb(100, 225, 255)).strong());
                     });
-                    if ui.add_sized([bw, 22.0], egui::Button::new(RichText::new(crate::i18n::tr("❌ Peruuta verkkoratkaisu")).color(Color32::from_rgb(255, 140, 140)))).clicked() {
+                    let cancel_w = ui.available_width();
+                    if ui.add_sized([cancel_w, 22.0], egui::Button::new(RichText::new(crate::i18n::tr("❌ Peruuta verkkoratkaisu")).color(Color32::from_rgb(255, 140, 140)))).clicked() {
                         self.cancel_wcs_online_solve();
                     }
                 });
             } else {
                 ui.horizontal(|ui| {
+                    let avail = ui.available_width();
+                    let gear_w = 28.0;
+                    let spacing = ui.spacing().item_spacing.x;
+                    let btn_w = (avail - gear_w - spacing).max(50.0);
                     let online_btn = ui.add_sized(
-                        [(bw - 34.0).max(100.0), 26.0],
+                        [btn_w, 26.0],
                         egui::Button::new(
                             RichText::new(crate::i18n::tr("🌐 Ratkaise verkossa (Astrometry.net)"))
                                 .color(Color32::from_rgb(110, 235, 255))
@@ -4492,7 +4464,7 @@ impl PhotonForgeApp {
                         self.solve_active_image_wcs_online();
                     }
 
-                    if ui.add_sized([28.0, 26.0], egui::Button::new("⚙"))
+                    if ui.add_sized([gear_w, 26.0], egui::Button::new("⚙"))
                         .on_hover_text(crate::i18n::tr("Astrometry.net API-asetukset & API-avain"))
                         .clicked()
                     {
@@ -4500,8 +4472,9 @@ impl PhotonForgeApp {
                     }
                 });
 
+                let local_btn_w = ui.available_width();
                 if ui.add_sized(
-                    [bw, 23.0],
+                    [local_btn_w, 23.0],
                     egui::Button::new(
                         RichText::new(crate::i18n::tr("🧭 Nopea paikallinen sovitus"))
                             .color(Color32::from_rgb(200, 220, 240)),
@@ -4547,10 +4520,8 @@ impl PhotonForgeApp {
 
         // PCC / SPCC (Photometric & Spectrophotometric Color Calibration)
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🎯 Fotometrinen värikalibrointi (PCC / SPCC)"));
             ui.label(crate::i18n::tr("Kalibroi kuvan värit automaattisesti saturoitumattomien tähtien fotometrian, mustan kappaleen säteilykäyrän ja kennon/suotimen spektrivasteen perusteella."));
 
@@ -4561,7 +4532,7 @@ impl PhotonForgeApp {
                 ui.radio_value(&mut self.pcc_config.mode, PccMode::Pcc, crate::i18n::tr("PCC (Fotometrinen)"));
             });
 
-            let combo_w = (gw - 12.0).max(150.0);
+            let combo_w = (ui.available_width() - 12.0).clamp(140.0, 260.0);
             ui.label(RichText::new(crate::i18n::tr("Valkopisteen referenssi:")).small());
             egui::ComboBox::from_id_salt("pcc_white_ref")
                 .selected_text(self.pcc_config.white_reference.label())
@@ -4673,10 +4644,8 @@ impl PhotonForgeApp {
 
         // White Balance
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("⚖️ Valkotasapaino"));
             ui.label(crate::i18n::tr("Hienosäädä tähtien ja sumun väritasapainoa."));
 
@@ -4703,10 +4672,8 @@ impl PhotonForgeApp {
 
         // Saturation
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("🎨 Värikylläisyys"));
             ui.label(crate::i18n::tr("Korostaa sumujen ja galaksien värejä."));
 
@@ -4723,10 +4690,8 @@ impl PhotonForgeApp {
 
         // Star Reduction
         ui.group(|ui| {
-            let gw = ui.available_width();
-            ui.set_width(gw);
-            ui.set_max_width(gw);
-            ui.spacing_mut().slider_width = (gw - 76.0).max(100.0);
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
             ui.strong(crate::i18n::tr("✨ Tähtien pienennys"));
             ui.label(crate::i18n::tr("Pienentää tähtien kokoa ja kirkkautta tuoden sumurakenteet paremmin esiin."));
 
@@ -4747,7 +4712,7 @@ impl PhotonForgeApp {
 
     fn ui_curves_editor(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.set_width(ui.available_width());
+            ui.set_max_width(ui.available_width());
 
             // Channel selector
             ui.horizontal_wrapped(|ui| {

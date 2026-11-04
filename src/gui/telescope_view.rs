@@ -215,6 +215,7 @@ impl TelescopeView {
 
         // 1. TELESCOPE CONNECTION & TELEMETRY
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let (sr, sg, sb) = telem.state.color_rgb();
             let arrow = if state.section_connection_open { "▼" } else { "▶" };
             let scope_header = format!("{} 🔭 {}", arrow, telem.scope_model.display_short());
@@ -223,10 +224,10 @@ impl TelescopeView {
                 if ui.add(egui::Button::new(RichText::new(scope_header).color(Color32::from_rgb(80, 200, 255)).strong()).frame(false)).clicked() {
                     state.section_connection_open = !state.section_connection_open;
                 }
-                let status_lbl = format!("● {}", crate::i18n::tr(telem.state.display_fi()));
-                let space = (ui.available_width() - 110.0).max(4.0);
-                ui.add_space(space);
-                ui.label(RichText::new(status_lbl).color(Color32::from_rgb(sr, sg, sb)).strong().small());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let status_lbl = format!("● {}", crate::i18n::tr(telem.state.display_fi()));
+                    ui.label(RichText::new(status_lbl).color(Color32::from_rgb(sr, sg, sb)).strong().small());
+                });
             });
 
             if state.section_connection_open {
@@ -550,6 +551,7 @@ impl TelescopeView {
 
         // 2. LIVE FRAME AUTO-DOWNLOAD (INGEST)
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let mut cfg = ingest_mgr.config.lock().unwrap();
             let st = ingest_mgr.status.lock().unwrap().clone();
             let arrow = if state.section_ingest_open { "▼" } else { "▶" };
@@ -558,13 +560,13 @@ impl TelescopeView {
                 if ui.add(egui::Button::new(RichText::new(format!("{} 📥 {}", arrow, crate::i18n::tr("Kuvien lataus tietokoneelle"))).color(Color32::from_rgb(100, 220, 255)).strong()).frame(false)).clicked() {
                     state.section_ingest_open = !state.section_ingest_open;
                 }
-                let space = (ui.available_width() - 90.0).max(4.0);
-                ui.add_space(space);
-                if st.is_active {
-                    ui.label(RichText::new(format!("🟢 {} {}", st.downloaded_count, crate::i18n::tr("kpl"))).color(Color32::from_rgb(100, 255, 140)).strong().small());
-                } else {
-                    ui.label(RichText::new(crate::i18n::tr("⚪ Ei yhteyttä")).color(Color32::from_rgb(150, 160, 180)).small());
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if st.is_active {
+                        ui.label(RichText::new(format!("🟢 {} {}", st.downloaded_count, crate::i18n::tr("kpl"))).color(Color32::from_rgb(100, 255, 140)).strong().small());
+                    } else {
+                        ui.label(RichText::new(crate::i18n::tr("⚪ Ei yhteyttä")).color(Color32::from_rgb(150, 160, 180)).small());
+                    }
+                });
             });
 
             if state.section_ingest_open {
@@ -612,6 +614,7 @@ impl TelescopeView {
 
         // 3. SELECTED TARGET CARD & NIGHT ALTITUDE GRAPH
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let arrow = if state.section_target_open { "▼" } else { "▶" };
             let target_badge = state.selected_object.as_ref().map(|o| {
                 let (alt, _) = ra_dec_to_alt_az(o.ra_hours, o.dec_deg, lat, lon, &now_utc);
@@ -623,9 +626,9 @@ impl TelescopeView {
                     state.section_target_open = !state.section_target_open;
                 }
                 if let Some(tb) = target_badge {
-                    let space = (ui.available_width() - 140.0).max(4.0);
-                    ui.add_space(space);
-                    ui.label(RichText::new(tb).color(Color32::from_rgb(120, 220, 255)).small());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(tb).color(Color32::from_rgb(120, 220, 255)).small());
+                    });
                 }
             });
 
@@ -691,6 +694,7 @@ impl TelescopeView {
 
         // 4. TARGET SEARCH & CATALOG LIST
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let arrow = if state.section_search_open { "▼" } else { "▶" };
 
             ui.horizontal(|ui| {
@@ -774,6 +778,7 @@ impl TelescopeView {
 
         // 5. MOSAIKKIKUVAUS (MOSAIC PLANNER)
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let arrow = if state.section_mosaic_open { "▼" } else { "▶" };
             let panel_summary = format!("{} {} ({:.1} deg²)", state.mosaic_plan.panels.len(), crate::i18n::tr("ruutua"), state.mosaic_plan.total_area_sq_deg);
 
@@ -834,6 +839,7 @@ impl TelescopeView {
 
                 if state.mosaic_config.scope_model == MosaicScopeModel::Custom {
                     ui.group(|ui| {
+                        ui.set_max_width(ui.available_width());
                         ui.label(RichText::new(crate::i18n::tr("Oman kaukoputken optiikka ja kenno:")).strong().small());
                         let mut custom_changed = false;
                         ui.horizontal_wrapped(|ui| {
@@ -955,6 +961,7 @@ impl TelescopeView {
 
         // 6. NIGHT SEQUENCER (N.I.N.A. SCHEDULER)
         ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
             let seq_state = sequencer.state.lock().unwrap().clone();
             let arrow = if state.section_sequencer_open { "▼" } else { "▶" };
 
@@ -962,17 +969,16 @@ impl TelescopeView {
                 if ui.add(egui::Button::new(RichText::new(format!("{} 📅 {}", arrow, crate::i18n::tr("Yösekvensseri"))).color(Color32::from_rgb(255, 200, 80)).strong()).frame(false)).clicked() {
                     state.section_sequencer_open = !state.section_sequencer_open;
                 }
-                if seq_state.is_running {
-                    ui.label(RichText::new(crate::i18n::tr("● KÄYNNISSÄ")).color(Color32::from_rgb(100, 255, 120)).strong().small());
-                } else {
-                    ui.label(RichText::new(crate::i18n::tr("● Valmiustila")).color(Color32::from_rgb(150, 160, 180)).small());
-                }
-
-                let space = (ui.available_width() - 95.0).max(4.0);
-                ui.add_space(space);
-                if ui.small_button(crate::i18n::tr("⛶ Päänäkymä")).on_hover_text(crate::i18n::tr("Avaa koko yösekvensserin iso hallintapöytä päänäkymään")).clicked() {
-                    state.center_view = TelescopeCenterView::Sequencer;
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button(crate::i18n::tr("⛶ Päänäkymä")).on_hover_text(crate::i18n::tr("Avaa koko yösekvensserin iso hallintapöytä päänäkymään")).clicked() {
+                        state.center_view = TelescopeCenterView::Sequencer;
+                    }
+                    if seq_state.is_running {
+                        ui.label(RichText::new(crate::i18n::tr("● KÄYNNISSÄ")).color(Color32::from_rgb(100, 255, 120)).strong().small());
+                    } else {
+                        ui.label(RichText::new(crate::i18n::tr("● Valmiustila")).color(Color32::from_rgb(150, 160, 180)).small());
+                    }
+                });
             });
 
             if state.section_sequencer_open {
@@ -1115,7 +1121,8 @@ impl TelescopeView {
                     for (idx, target) in seq_state.targets.iter().enumerate() {
                         let is_active = seq_state.current_job_idx == Some(idx);
                         ui.group(|ui| {
-                            // Row 1: Left title, Right status & delete button
+                            ui.set_max_width(ui.available_width());
+                            // Row 1: Right-to-left layout for delete button & status, then left-to-right title
                             ui.horizontal(|ui| {
                                 let title_col = if is_active {
                                     Color32::from_rgb(255, 230, 80)
@@ -1138,19 +1145,17 @@ impl TelescopeView {
                                     _ => Color32::from_rgb(160, 175, 200),
                                 };
 
-                                let right_w = 95.0;
-                                let title_w = (ui.available_width() - right_w).max(60.0);
-                                ui.add_sized(
-                                    [title_w, 18.0],
-                                    egui::Label::new(RichText::new(&label_str).strong().color(title_col)).truncate(),
-                                )
-                                .on_hover_text(&target.name);
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.small_button("✖").on_hover_text(crate::i18n::tr("Poista sekvenssistä")).clicked() {
+                                        sequencer.remove_target(idx);
+                                    }
+                                    ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).small().color(status_col));
 
-                                ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).small().color(status_col));
-
-                                if ui.small_button("✖").on_hover_text(crate::i18n::tr("Poista sekvenssistä")).clicked() {
-                                    sequencer.remove_target(idx);
-                                }
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                        ui.add(egui::Label::new(RichText::new(&label_str).strong().color(title_col)).truncate())
+                                            .on_hover_text(&target.name);
+                                    });
+                                });
                             });
 
                             // Row 2: Metadata Badges
@@ -1185,7 +1190,7 @@ impl TelescopeView {
         let seq_state = sequencer.state.lock().unwrap().clone();
         let telem = client.get_telemetry();
         let now_utc = Utc::now();
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
 
         egui::ScrollArea::vertical()
             .id_salt("sequencer_center_scroll")
@@ -1250,7 +1255,7 @@ impl TelescopeView {
 
                 // Night Automation & Resilience Panel (3-column layout)
                 ui.group(|ui| {
-                    ui.set_width(ui.available_width());
+                    ui.set_max_width(ui.available_width());
                     ui.label(
                         RichText::new(crate::i18n::tr("⚙ Yöajon automatiikka ja vikasietoisuus"))
                             .strong()
@@ -1268,7 +1273,7 @@ impl TelescopeView {
                     ui.columns(3, |cols| {
                         // Column 1: Auto-Focus
                         cols[0].group(|ui| {
-                            ui.set_width(ui.available_width());
+                            ui.set_max_width(ui.available_width());
                             af_changed |= ui
                                 .checkbox(
                                     &mut af_cfg.enabled,
@@ -1303,7 +1308,7 @@ impl TelescopeView {
 
                         // Column 2: Dithering
                         cols[1].group(|ui| {
-                            ui.set_width(ui.available_width());
+                            ui.set_max_width(ui.available_width());
                             dither_changed |= ui
                                 .checkbox(
                                     &mut dither_cfg.enabled,
@@ -1337,7 +1342,7 @@ impl TelescopeView {
 
                         // Column 3: Connection Guard & Recovery
                         cols[2].group(|ui| {
-                            ui.set_width(ui.available_width());
+                            ui.set_max_width(ui.available_width());
                             guard_changed |= ui
                                 .checkbox(
                                     &mut conn_guard.auto_reconnect,
@@ -1404,7 +1409,7 @@ impl TelescopeView {
                         let is_active = seq_state.current_job_idx == Some(idx);
 
                         ui.group(|ui| {
-                            ui.set_width(ui.available_width());
+                            ui.set_max_width(ui.available_width());
 
                             // Row 1: Right-aligned delete button and status badge, left fills with Title
                             ui.horizontal(|ui| {
@@ -1564,7 +1569,7 @@ impl TelescopeView {
     ) {
         let telem = client.get_telemetry();
         let now_utc = Utc::now();
-        ui.set_width(ui.available_width());
+        ui.set_max_width(ui.available_width());
 
         // Top view toolbar
         ui.horizontal_wrapped(|ui| {
