@@ -15,7 +15,9 @@ use crate::processing::pcc::{
     PccConfig, PccMode, PccResult, PhotometricColorCalibrator, SensorProfile, SpccFilterProfile,
     WhiteReference,
 };
-use crate::processing::plate_solve::{AnnotationConfig, PlateSolver, WcsSolution};
+use crate::processing::plate_solve::{
+    AnnotationConfig, AstrometryConfig, AstrometryNetSolver, PlateSolver, WcsSolution,
+};
 use crate::processing::stf::{ChannelStf, StfParameters};
 use crate::processing::syqon::{SyQonEngine, SyQonModel, SyQonProgress, SyQonResult, SyQonTask};
 use super::telescope_view::{TelescopeCenterView, TelescopeView, TelescopeViewState};
@@ -109,6 +111,14 @@ pub struct PhotonForgeApp {
     wcs_solution: Option<WcsSolution>,
     wcs_solved_image_key: Option<(usize, usize, usize)>,
     wcs_manual_target_idx: Option<usize>,
+    astrometry_config: AstrometryConfig,
+    show_astrometry_dialog: bool,
+    hide_astrometry_key: bool,
+    astrometry_test_result: Option<Result<String, String>>,
+    is_wcs_online_solving: bool,
+    wcs_online_rx: Option<Receiver<Result<WcsSolution, String>>>,
+    wcs_online_status: Arc<Mutex<String>>,
+    wcs_online_cancel: Option<Arc<AtomicBool>>,
     abe_degree: usize,
     abe_mode: ExtractionMode,
     abe_deviation: f32,
@@ -260,6 +270,14 @@ impl Default for PhotonForgeApp {
             wcs_solution: None,
             wcs_solved_image_key: None,
             wcs_manual_target_idx: None,
+            astrometry_config: AstrometryConfig::load(),
+            show_astrometry_dialog: false,
+            hide_astrometry_key: true,
+            astrometry_test_result: None,
+            is_wcs_online_solving: false,
+            wcs_online_rx: None,
+            wcs_online_status: Arc::new(Mutex::new(String::new())),
+            wcs_online_cancel: None,
             abe_degree: 2,
             abe_mode: ExtractionMode::Subtraction,
             abe_deviation: 3.5,
@@ -1049,6 +1067,14 @@ impl PhotonForgeApp {
     }
 
     fn solve_active_image_wcs(&mut self) {
+        if self.astrometry_config.use_online_by_default && !self.astrometry_config.api_key.trim().is_empty() {
+            self.solve_active_image_wcs_online();
+        } else {
+            self.solve_active_image_wcs_local();
+        }
+    }
+
+    fn solve_active_image_wcs_local(&mut self) {
         let Some(img) = self.active_image_arc() else {
             self.status_message = crate::i18n::tr("Avaa kuva ensin WCS-kenttäratkaisua (Plate Solve) varten.").to_string();
             return;
@@ -1103,6 +1129,78 @@ impl PhotonForgeApp {
         );
         self.wcs_solved_image_key = Some((self.active_image_index, img.width, img.height));
         self.wcs_solution = Some(sol);
+    }
+
+    fn solve_active_image_wcs_online(&mut self) {
+        if self.is_wcs_online_solving {
+            return;
+        }
+
+        let Some(img) = self.active_image_arc() else {
+            self.status_message = crate::i18n::tr("Avaa kuva ensin verkkopohjaista Plate Solvea varten.").to_string();
+            return;
+        };
+
+        if self.astrometry_config.api_key.trim().is_empty() {
+            self.show_astrometry_dialog = true;
+            self.status_message = crate::i18n::tr("Syötä Astrometry.net API-avain aloittaaksesi verkkoratkaisun.").to_string();
+            return;
+        }
+
+        let fallback = if let Some(idx) = self.wcs_manual_target_idx {
+            self.sky_catalog
+                .get(idx)
+                .map(|o| (o.ra_hours, o.dec_deg, format!("{} – {}", o.id, o.name)))
+        } else {
+            let t = self.seestar_client.get_telemetry();
+            Some((t.target_ra, t.target_dec, t.target_name))
+        };
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.wcs_online_rx = Some(rx);
+        self.is_wcs_online_solving = true;
+
+        let status_arc = Arc::new(Mutex::new(crate::i18n::tr("Valmistellaan kuvaa Astrometry.nettiin...").to_string()));
+        self.wcs_online_status = Arc::clone(&status_arc);
+
+        let cancel_arc = Arc::new(AtomicBool::new(false));
+        self.wcs_online_cancel = Some(Arc::clone(&cancel_arc));
+
+        let img_clone = (*img).clone();
+        let cfg_clone = self.astrometry_config.clone();
+        let cat_clone = self.sky_catalog.clone();
+
+        self.status_message = crate::i18n::tr("Aloitetaan kentän verkkoratkaisu (Astrometry.net)...").to_string();
+
+        std::thread::spawn(move || {
+            let status_writer = Arc::clone(&status_arc);
+            let on_status: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |msg: &str| {
+                if let Ok(mut lock) = status_writer.lock() {
+                    *lock = msg.to_string();
+                }
+            });
+
+            let res = AstrometryNetSolver::solve_online(
+                &img_clone,
+                &cfg_clone,
+                &cat_clone,
+                fallback.as_ref().map(|(r, d, n)| (*r, *d, n.as_str())),
+                Some(cancel_arc),
+                Some(on_status),
+            );
+
+            let _ = tx.send(res);
+        });
+    }
+
+    fn cancel_wcs_online_solve(&mut self) {
+        if let Some(cancel) = &self.wcs_online_cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.is_wcs_online_solving = false;
+        self.wcs_online_rx = None;
+        self.wcs_online_cancel = None;
+        self.status_message = crate::i18n::tr("Astrometry.net -ratkaisu peruutettu.").to_string();
     }
 
     fn toggle_wcs_annotations(&mut self) {
@@ -1631,6 +1729,44 @@ impl eframe::App for PhotonForgeApp {
             }
         }
 
+        // Handle background Astrometry.net online plate solving completion
+        if self.is_wcs_online_solving {
+            ctx.request_repaint();
+
+            if let Some(rx) = &self.wcs_online_rx {
+                if let Ok(result) = rx.try_recv() {
+                    self.is_wcs_online_solving = false;
+                    self.wcs_online_rx = None;
+                    self.wcs_online_cancel = None;
+
+                    match result {
+                        Ok(mut sol) => {
+                            sol.populate_catalog_objects(&self.sky_catalog);
+                            let (fov_w, fov_h) = sol.fov_deg();
+                            self.status_message = format!(
+                                "Astrometry.net Plate Solve valmis: {} {} | FOV {:.2}°×{:.2}° | {} tähteä, {} DSO-kohdetta ({})",
+                                format_ra(sol.center_ra_hours),
+                                format_dec(sol.center_dec_deg),
+                                fov_w,
+                                fov_h,
+                                sol.detected_stars.len(),
+                                sol.matched_objects.len(),
+                                sol.solver_source
+                            );
+                            if let Some(img) = self.active_image() {
+                                self.wcs_solved_image_key = Some((self.active_image_index, img.width, img.height));
+                            }
+                            self.wcs_solution = Some(sol);
+                            self.annotation_config.enabled = true;
+                        }
+                        Err(e) => {
+                            self.status_message = format!("Astrometry.net -virhe: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
         // Support drag-and-drop of files and folders directly onto the window
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
         if !dropped_files.is_empty() && !self.is_loading_files {
@@ -1839,7 +1975,11 @@ impl eframe::App for PhotonForgeApp {
                         self.run_pcc();
                     }
 
-                    let wcs_btn_text = if self.annotation_config.enabled {
+                    let wcs_btn_text = if self.is_wcs_online_solving {
+                        RichText::new(crate::i18n::tr("⏳ WCS (Ratkaistaan...)"))
+                            .color(Color32::from_rgb(100, 225, 255))
+                            .strong()
+                    } else if self.annotation_config.enabled {
                         RichText::new(crate::i18n::tr("🧭 WCS & Kohteet (PÄÄLLÄ)"))
                             .color(Color32::from_rgb(100, 255, 160))
                             .strong()
@@ -2498,10 +2638,147 @@ impl eframe::App for PhotonForgeApp {
                     ui.add_space(4.0);
                 });
         }
+
+        // Astrometry.net API Settings Dialog
+        self.render_astrometry_settings_dialog(ctx);
     }
 }
 
+pub fn open_browser_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", url]).spawn();
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
 impl PhotonForgeApp {
+    fn render_astrometry_settings_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_astrometry_dialog {
+            return;
+        }
+
+        let mut open = self.show_astrometry_dialog;
+        egui::Window::new(crate::i18n::tr("🌐 Astrometry.net API -asetukset"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .frame(egui::Frame::window(&ctx.style()).fill(Color32::from_rgba_premultiplied(20, 24, 34, 252)))
+            .show(ctx, |ui| {
+                ui.set_min_width(430.0);
+                ui.vertical_centered(|ui| {
+                    ui.add_space(4.0);
+                    ui.heading(
+                        RichText::new(crate::i18n::tr("🌐 Astrometry.net Verkkoratkaisu"))
+                            .color(Color32::from_rgb(100, 220, 255))
+                            .strong(),
+                    );
+                    ui.add_space(4.0);
+                });
+
+                ui.label(crate::i18n::tr(
+                    "Astrometry.net ratkaisee tähtikuvat tarkasti ja sokeasti vertaamalla tähtikuvioita koko taivaan kattavaan tietokantaan. Palvelu on maksuton ja vaatii ainoastaan API-avaimen.",
+                ));
+
+                ui.add_space(6.0);
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(RichText::new("🌐 Avaa nova.astrometry.net/api_help").strong())
+                            .on_hover_text(crate::i18n::tr("Avaa Astrometry.net-sivuston selaimeen maksuttoman avaimen kopioimiseksi"))
+                            .clicked()
+                        {
+                            open_browser_url("https://nova.astrometry.net/api_help");
+                        }
+                        ui.label(RichText::new(crate::i18n::tr("(Hanki ilmainen API-avain)")).small().italics());
+                    });
+                });
+
+                ui.add_space(6.0);
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.strong(crate::i18n::tr("API-avain (API Key):"));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let eye_lbl = if self.hide_astrometry_key { "👁 Näytä" } else { "🔒 Piilota" };
+                            if ui.small_button(eye_lbl).clicked() {
+                                self.hide_astrometry_key = !self.hide_astrometry_key;
+                            }
+                        });
+                    });
+                    ui.add_space(2.0);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.astrometry_config.api_key)
+                            .password(self.hide_astrometry_key)
+                            .hint_text("Liitä API-avain tähän (esim. abcdef123456)...")
+                            .desired_width(ui.available_width() - 8.0),
+                    );
+
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(crate::i18n::tr("🔍 Testaa yhteys & avain")).clicked() {
+                            let res = AstrometryNetSolver::test_api_key(
+                                &self.astrometry_config.api_url,
+                                &self.astrometry_config.api_key,
+                            );
+                            self.astrometry_test_result = Some(res);
+                        }
+
+                        if let Some(res) = &self.astrometry_test_result {
+                            match res {
+                                Ok(msg) => {
+                                    ui.label(RichText::new(format!("✅ {}", msg)).color(Color32::from_rgb(100, 255, 140)).small());
+                                }
+                                Err(e) => {
+                                    ui.label(RichText::new(format!("❌ {}", e)).color(Color32::from_rgb(255, 120, 120)).small());
+                                }
+                            }
+                        }
+                    });
+                });
+
+                ui.add_space(6.0);
+                ui.checkbox(
+                    &mut self.astrometry_config.use_online_by_default,
+                    crate::i18n::tr("Käytä aina Astrometry.nettiä oletuksena kentän ratkaisuun"),
+                );
+
+                ui.collapsing(crate::i18n::tr("Edistyneet asetukset"), |ui| {
+                    ui.label(RichText::new(crate::i18n::tr("Palvelimen URL-osoite:")).small());
+                    ui.add(egui::TextEdit::singleline(&mut self.astrometry_config.api_url).desired_width(340.0));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Mittakaavarajat (\"/px vihje):")).small());
+                    ui.horizontal(|ui| {
+                        let mut lower = self.astrometry_config.scale_lower.unwrap_or(1.0);
+                        let mut upper = self.astrometry_config.scale_upper.unwrap_or(8.0);
+                        ui.label("Min:");
+                        ui.add(egui::DragValue::new(&mut lower).speed(0.1).range(0.2..=20.0).suffix("\"/px"));
+                        ui.label("Max:");
+                        ui.add(egui::DragValue::new(&mut upper).speed(0.1).range(0.5..=30.0).suffix("\"/px"));
+                        self.astrometry_config.scale_lower = Some(lower);
+                        self.astrometry_config.scale_upper = Some(upper);
+                    });
+                });
+
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new(crate::i18n::tr("💾 Tallenna asetukset")).strong().color(Color32::from_rgb(100, 230, 255))).clicked() {
+                        self.astrometry_config.save();
+                        self.show_astrometry_dialog = false;
+                        self.status_message = crate::i18n::tr("Astrometry.net API-asetukset tallennettu onnistuneesti.").to_string();
+                    }
+                    if ui.button(crate::i18n::tr("Sulje")).clicked() {
+                        self.show_astrometry_dialog = false;
+                    }
+                });
+                ui.add_space(4.0);
+            });
+        self.show_astrometry_dialog = open;
+    }
+
     fn ui_empty_workspace(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
             let total_h = ui.available_height();
@@ -4188,19 +4465,54 @@ impl PhotonForgeApp {
 
             ui.add_space(4.0);
             let bw = ui.available_width();
-            if ui
-                .add_sized(
-                    [bw, 25.0],
+            if self.is_wcs_online_solving {
+                ui.group(|ui| {
+                    ui.set_width(bw);
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        let status_text = self.wcs_online_status.lock().map(|s| s.clone()).unwrap_or_default();
+                        ui.label(RichText::new(status_text).color(Color32::from_rgb(100, 225, 255)).strong());
+                    });
+                    if ui.add_sized([bw, 22.0], egui::Button::new(RichText::new(crate::i18n::tr("❌ Peruuta verkkoratkaisu")).color(Color32::from_rgb(255, 140, 140)))).clicked() {
+                        self.cancel_wcs_online_solve();
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    let online_btn = ui.add_sized(
+                        [(bw - 34.0).max(100.0), 26.0],
+                        egui::Button::new(
+                            RichText::new(crate::i18n::tr("🌐 Ratkaise verkossa (Astrometry.net)"))
+                                .color(Color32::from_rgb(110, 235, 255))
+                                .strong(),
+                        ),
+                    );
+                    if online_btn.on_hover_text(crate::i18n::tr("Tarkka ja varma verkkoratkaisu Astrometry.net -palvelulla. Ratkaisee sokeasti minkä tahansa kuvan.")).clicked() {
+                        self.annotation_config.enabled = true;
+                        self.solve_active_image_wcs_online();
+                    }
+
+                    if ui.add_sized([28.0, 26.0], egui::Button::new("⚙"))
+                        .on_hover_text(crate::i18n::tr("Astrometry.net API-asetukset & API-avain"))
+                        .clicked()
+                    {
+                        self.show_astrometry_dialog = !self.show_astrometry_dialog;
+                    }
+                });
+
+                if ui.add_sized(
+                    [bw, 23.0],
                     egui::Button::new(
-                        RichText::new(crate::i18n::tr("🧭 Ratkaise kenttä & Näytä kohteet"))
-                            .color(Color32::from_rgb(100, 230, 255))
-                            .strong(),
+                        RichText::new(crate::i18n::tr("🧭 Nopea paikallinen sovitus"))
+                            .color(Color32::from_rgb(200, 220, 240)),
                     ),
                 )
+                .on_hover_text(crate::i18n::tr("Käyttää FITS-otsikoita, tiedostonimeä tai teleskoopin telemetriaa (ilman verkkoyhteyttä)"))
                 .clicked()
-            {
-                self.annotation_config.enabled = true;
-                self.solve_active_image_wcs();
+                {
+                    self.annotation_config.enabled = true;
+                    self.solve_active_image_wcs_local();
+                }
             }
 
             if let Some(sol) = &self.wcs_solution {

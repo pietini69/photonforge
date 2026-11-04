@@ -32,7 +32,10 @@ pub use pcc::{
     WhiteReference,
 };
 #[allow(unused_imports)]
-pub use plate_solve::{AnnotatedObject, AnnotationConfig, PlateSolver, WcsSolution};
+pub use plate_solve::{
+    AnnotatedObject, AnnotationConfig, AstrometryConfig, AstrometryNetSolver, PlateSolver,
+    WcsSolution,
+};
 #[allow(unused_imports)]
 pub use star_reduction::StarReduction;
 #[allow(unused_imports)]

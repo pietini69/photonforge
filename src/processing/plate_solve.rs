@@ -1,9 +1,13 @@
-use crate::core::image::AstroImage;
+use crate::core::image::{apply_mtf_stretch, AstroImage};
 use crate::processing::alignment::{Star, StarDetector};
+use crate::processing::stf::StfParameters;
 use crate::telescope::catalog::{DsoType, SkyObject};
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 /// Configuration for the Celestial WCS & Annotation Overlay on the image canvas
 #[derive(Clone, Debug)]
@@ -574,4 +578,488 @@ struct FitsWcsRaw {
     arcsec_per_px: Option<f64>,
     rotation_deg: Option<f64>,
     has_cd_matrix: bool,
+}
+
+/// Configuration for the Astrometry.net online plate solving service
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AstrometryConfig {
+    /// User API key from nova.astrometry.net (free registration)
+    pub api_key: String,
+    /// Base URL of the API (defaults to https://nova.astrometry.net/api)
+    pub api_url: String,
+    /// Scale units: "arcsecperpix" (default), "degwidth", or "arcminwidth"
+    pub scale_units: String,
+    /// Lower bound for plate scale in arcsec/pixel (optional hint)
+    pub scale_lower: Option<f64>,
+    /// Upper bound for plate scale in arcsec/pixel (optional hint)
+    pub scale_upper: Option<f64>,
+    /// Automatically use online plate solver when clicking WCS & Annotations
+    pub use_online_by_default: bool,
+}
+
+impl Default for AstrometryConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_url: "https://nova.astrometry.net/api".to_string(),
+            scale_units: "arcsecperpix".to_string(),
+            scale_lower: Some(1.0),
+            scale_upper: Some(8.0),
+            use_online_by_default: false,
+        }
+    }
+}
+
+impl AstrometryConfig {
+    pub fn config_path() -> Option<PathBuf> {
+        let base_dir = if let Some(home) = std::env::var_os("HOME") {
+            PathBuf::from(home).join(".config").join("photon_forge")
+        } else if let Some(appdata) = std::env::var_os("APPDATA") {
+            PathBuf::from(appdata).join("photon_forge")
+        } else {
+            return None;
+        };
+        let _ = std::fs::create_dir_all(&base_dir);
+        Some(base_dir.join("astrometry_settings.json"))
+    }
+
+    pub fn load() -> Self {
+        if let Some(path) = Self::config_path() {
+            if let Ok(data) = std::fs::read_to_string(&path) {
+                if let Ok(mut cfg) = serde_json::from_str::<AstrometryConfig>(&data) {
+                    if cfg.api_key.trim().is_empty() {
+                        if let Ok(env_key) = std::env::var("ASTROMETRY_API_KEY") {
+                            cfg.api_key = env_key.trim().to_string();
+                        }
+                    }
+                    if cfg.api_url.trim().is_empty() {
+                        cfg.api_url = "https://nova.astrometry.net/api".to_string();
+                    }
+                    return cfg;
+                }
+            }
+        }
+        let mut cfg = Self::default();
+        if let Ok(env_key) = std::env::var("ASTROMETRY_API_KEY") {
+            cfg.api_key = env_key.trim().to_string();
+        }
+        cfg
+    }
+
+    pub fn save(&self) {
+        if let Some(path) = Self::config_path() {
+            if let Ok(json) = serde_json::to_string_pretty(self) {
+                let _ = std::fs::write(&path, json);
+            }
+        }
+    }
+}
+
+pub struct AstrometryNetSolver;
+
+impl AstrometryNetSolver {
+    /// Validates an API key against the Astrometry.net API
+    pub fn test_api_key(api_url: &str, api_key: &str) -> Result<String, String> {
+        let clean_key = api_key.trim();
+        if clean_key.is_empty() {
+            return Err("API-avain on tyhjä. Rekisteröidy ilmaiseksi osoitteessa nova.astrometry.net".to_string());
+        }
+
+        let agent = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(15))
+            .build();
+
+        let clean_url = api_url.trim_end_matches('/');
+        let login_url = format!("{}/login", clean_url);
+        let req_json = serde_json::json!({ "apikey": clean_key }).to_string();
+
+        let resp = agent
+            .post(&login_url)
+            .set("Content-Type", "application/x-www-form-urlencoded")
+            .send_string(&format!("request-json={}", req_json))
+            .map_err(|e| format!("Yhteysvirhe Astrometry.nettiin: {}", e))?;
+
+        let val: serde_json::Value = resp
+            .into_json()
+            .map_err(|e| format!("Virheellinen vastaus palvelimelta: {}", e))?;
+
+        if val["status"].as_str() == Some("success") {
+            let msg = val["message"]
+                .as_str()
+                .unwrap_or("Tunnistettu onnistuneesti");
+            Ok(msg.to_string())
+        } else {
+            let err = val["errormessage"]
+                .as_str()
+                .unwrap_or("Virheellinen API-avain tai palvelinvirhe");
+            Err(err.to_string())
+        }
+    }
+
+    /// Prepares an `AstroImage` for submission:
+    /// - Scales down to max 1400 px for fast upload and sub-second transmission
+    /// - Applies autostretch (MTF) to maximize star contrast on dark sky
+    /// - Encodes to in-memory 8-bit grayscale JPEG
+    /// Returns (jpeg_bytes, scale_factor)
+    pub fn prepare_image(image: &AstroImage) -> Result<(Vec<u8>, f64), String> {
+        let max_dim = image.width.max(image.height);
+        let scale_factor = if max_dim > 1400 {
+            max_dim as f64 / 1400.0
+        } else {
+            1.0
+        };
+
+        let target_w = ((image.width as f64) / scale_factor).round().max(100.0) as usize;
+        let target_h = ((image.height as f64) / scale_factor).round().max(100.0) as usize;
+
+        // Compute median & MAD for luminance to calculate MTF auto-stretch
+        let stf = StfParameters::compute_auto(image, false);
+        let (shadows, midtones, highlights) = if image.is_mono() {
+            (stf.channels[0].shadows, stf.channels[0].midtones, stf.channels[0].highlights)
+        } else {
+            let avg_s = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+            let avg_m = (stf.channels[0].midtones + stf.channels[1].midtones + stf.channels[2].midtones) / 3.0;
+            let avg_h = (stf.channels[0].highlights + stf.channels[1].highlights + stf.channels[2].highlights) / 3.0;
+            (avg_s, avg_m, avg_h)
+        };
+
+        let mut gray_bytes = vec![0u8; target_w * target_h];
+
+        for ty in 0..target_h {
+            let sy_start = (ty as f64 * scale_factor) as usize;
+            let sy_end = (((ty + 1) as f64 * scale_factor).ceil() as usize).min(image.height);
+
+            for tx in 0..target_w {
+                let sx_start = (tx as f64 * scale_factor) as usize;
+                let sx_end = (((tx + 1) as f64 * scale_factor).ceil() as usize).min(image.width);
+
+                let mut peak_val = 0.0f32;
+                let mut sum_val = 0.0f32;
+                let mut samples = 0;
+
+                for py in sy_start..sy_end.max(sy_start + 1) {
+                    for px in sx_start..sx_end.max(sx_start + 1) {
+                        let pix = image.get_pixel(px, py);
+                        let lum = if pix.len() >= 3 {
+                            0.2126 * pix[0] + 0.7152 * pix[1] + 0.0722 * pix[2]
+                        } else {
+                            pix[0]
+                        };
+                        if lum > peak_val {
+                            peak_val = lum;
+                        }
+                        sum_val += lum;
+                        samples += 1;
+                    }
+                }
+
+                let mean_val = if samples > 0 { sum_val / samples as f32 } else { 0.0 };
+                // Blend peak star brightness (60%) with local mean (40%) to keep point stars crisp
+                let lum_blended = peak_val * 0.60 + mean_val * 0.40;
+
+                let stretched = apply_mtf_stretch(lum_blended, shadows, midtones, highlights);
+                let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                gray_bytes[ty * target_w + tx] = byte;
+            }
+        }
+
+        // Encode as JPEG buffer
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 85);
+        encoder
+            .encode(
+                &gray_bytes,
+                target_w as u32,
+                target_h as u32,
+                image::ExtendedColorType::L8,
+            )
+            .map_err(|e| format!("Virhe JPEG-koodauksessa: {}", e))?;
+
+        Ok((cursor.into_inner(), scale_factor))
+    }
+
+    /// Solves an image celestial coordinates using the Astrometry.net cloud API
+    pub fn solve_online(
+        image: &AstroImage,
+        config: &AstrometryConfig,
+        catalog: &[SkyObject],
+        fallback_radec: Option<(f64, f64, &str)>,
+        cancel: Option<Arc<AtomicBool>>,
+        on_status: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    ) -> Result<WcsSolution, String> {
+        let clean_key = config.api_key.trim();
+        if clean_key.is_empty() {
+            return Err("Astrometry.net API-avain puuttuu. Syötä API-avain asetuksista.".to_string());
+        }
+
+        let agent = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(45))
+            .build();
+
+        let clean_url = config.api_url.trim_end_matches('/');
+
+        // 1. Prepare image
+        if let Some(cb) = &on_status {
+            cb("Valmistellaan ja skaalataan kuvaa Astrometry.net -lähetystä varten...");
+        }
+        let (jpeg_bytes, scale_factor) = Self::prepare_image(image)?;
+
+        if let Some(c) = &cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+            }
+        }
+
+        // 2. Login to get session
+        if let Some(cb) = &on_status {
+            cb("Yhdistetään Astrometry.net -palveluun...");
+        }
+        let login_url = format!("{}/login", clean_url);
+        let req_json = serde_json::json!({ "apikey": clean_key }).to_string();
+
+        let resp = agent
+            .post(&login_url)
+            .set("Content-Type", "application/x-www-form-urlencoded")
+            .send_string(&format!("request-json={}", req_json))
+            .map_err(|e| format!("Yhteysvirhe Astrometry.nettiin: {}", e))?;
+
+        let login_val: serde_json::Value = resp
+            .into_json()
+            .map_err(|e| format!("Virheellinen kirjautumisvastaus: {}", e))?;
+
+        if login_val["status"].as_str() != Some("success") {
+            let err = login_val["errormessage"]
+                .as_str()
+                .unwrap_or("Kirjautuminen epäonnistui");
+            return Err(format!("Astrometry.net-kirjautumisvirhe: {}", err));
+        }
+
+        let session = login_val["session"]
+            .as_str()
+            .ok_or_else(|| "Puuttuva istuntoavain (session)".to_string())?;
+
+        if let Some(c) = &cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+            }
+        }
+
+        // 3. Build upload payload
+        if let Some(cb) = &on_status {
+            cb(&format!(
+                "Lähetetään kuvaa Astrometry.nettiin ({:.1} KB)...",
+                jpeg_bytes.len() as f64 / 1024.0
+            ));
+        }
+
+        let mut upload_params = serde_json::json!({
+            "session": session,
+            "allow_commercial_use": "d",
+            "allow_modifications": "d",
+            "publicly_visible": "n",
+            "scale_units": config.scale_units,
+            "scale_type": "ul",
+        });
+
+        // Add scale bounds if provided (accounting for downsampling scale_factor!)
+        if let Some(lower) = config.scale_lower {
+            upload_params["scale_lower"] = serde_json::json!(lower * scale_factor);
+        }
+        if let Some(upper) = config.scale_upper {
+            upload_params["scale_upper"] = serde_json::json!(upper * scale_factor);
+        }
+
+        // Add approximate center coordinates hint if available
+        if let Some((fb_ra, fb_dec, _)) = fallback_radec {
+            upload_params["center_ra"] = serde_json::json!(fb_ra * 15.0);
+            upload_params["center_dec"] = serde_json::json!(fb_dec);
+            upload_params["radius"] = serde_json::json!(10.0);
+        }
+
+        let boundary = format!(
+            "----PhotonForge{:016x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(12345678)
+        );
+
+        let mut body = Vec::with_capacity(jpeg_bytes.len() + 2048);
+
+        // Part 1: request-json
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"request-json\"\r\n");
+        body.extend_from_slice(b"Content-Type: text/plain\r\n\r\n");
+        body.extend_from_slice(upload_params.to_string().as_bytes());
+        body.extend_from_slice(b"\r\n");
+
+        // Part 2: file
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"field.jpg\"\r\n");
+        body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+        body.extend_from_slice(&jpeg_bytes);
+        body.extend_from_slice(b"\r\n");
+
+        // End boundary
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let upload_url = format!("{}/upload", clean_url);
+        let upload_resp = agent
+            .post(&upload_url)
+            .set(
+                "Content-Type",
+                &format!("multipart/form-data; boundary={}", boundary),
+            )
+            .send_bytes(&body)
+            .map_err(|e| format!("Virhe kuvan lähetyksessä: {}", e))?;
+
+        let upload_val: serde_json::Value = upload_resp
+            .into_json()
+            .map_err(|e| format!("Virheellinen lähetysvastaus: {}", e))?;
+
+        if upload_val["status"].as_str() != Some("success") {
+            let err = upload_val["errormessage"]
+                .as_str()
+                .unwrap_or("Tuntematon lähetysvirhe");
+            return Err(format!("Astrometry.net-lähetysvirhe: {}", err));
+        }
+
+        let subid = upload_val["subid"]
+            .as_u64()
+            .ok_or_else(|| "Puuttuva lähetystunniste (subid)".to_string())?;
+
+        // 4. Poll submission for jobs
+        let sub_url = format!("{}/submissions/{}", clean_url, subid);
+        let mut job_id: Option<u64> = None;
+
+        for attempt in 1..=45 {
+            std::thread::sleep(Duration::from_millis(2000));
+
+            if let Some(c) = &cancel {
+                if c.load(Ordering::Relaxed) {
+                    return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+                }
+            }
+
+            if let Some(cb) = &on_status {
+                cb(&format!(
+                    "Astrometry.net: jonotetaan käsittelyyn #{} ({}s)...",
+                    subid,
+                    attempt * 2
+                ));
+            }
+
+            if let Ok(resp) = agent.get(&sub_url).call() {
+                if let Ok(val) = resp.into_json::<serde_json::Value>() {
+                    if let Some(jobs) = val["jobs"].as_array() {
+                        if let Some(first) = jobs.first().and_then(|j| j.as_u64()) {
+                            job_id = Some(first);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let job_id = job_id.ok_or_else(|| {
+            "Aikakatkaisu: Astrometry.net ei aloittanut työtä 90 sekunnissa.".to_string()
+        })?;
+
+        // 5. Poll job status
+        let status_url = format!("{}/jobs/{}/status", clean_url, job_id);
+        let mut solved = false;
+
+        for attempt in 1..=60 {
+            std::thread::sleep(Duration::from_millis(2000));
+
+            if let Some(c) = &cancel {
+                if c.load(Ordering::Relaxed) {
+                    return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+                }
+            }
+
+            if let Some(cb) = &on_status {
+                cb(&format!(
+                    "Astrometry.net: ratkaistaan tähtikuvioita #{} ({}s)...",
+                    job_id,
+                    attempt * 2
+                ));
+            }
+
+            if let Ok(resp) = agent.get(&status_url).call() {
+                if let Ok(val) = resp.into_json::<serde_json::Value>() {
+                    match val["status"].as_str() {
+                        Some("success") => {
+                            solved = true;
+                            break;
+                        }
+                        Some("failure") => {
+                            return Err(
+                                "Astrometry.net ei kyennyt ratkaisemaan kenttää (liian vähän tähtiä tai ei tunnistettu).".to_string(),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if !solved {
+            return Err("Aikakatkaisu kenttää ratkaistaessa (Astrometry.net).".to_string());
+        }
+
+        // 6. Fetch calibration
+        if let Some(cb) = &on_status {
+            cb("Haetaan ratkaistut koordinaatit ja kalibrointitiedot...");
+        }
+
+        let calib_url = format!("{}/jobs/{}/calibration", clean_url, job_id);
+        let calib_resp = agent
+            .get(&calib_url)
+            .call()
+            .map_err(|e| format!("Virhe kalibrointitietojen haussa: {}", e))?;
+
+        let calib: serde_json::Value = calib_resp
+            .into_json()
+            .map_err(|e| format!("Virheellinen kalibrointivastaus: {}", e))?;
+
+        let ra_deg = calib["ra"]
+            .as_f64()
+            .ok_or_else(|| "Puuttuva RA kalibrointitiedoissa".to_string())?;
+        let dec_deg = calib["dec"]
+            .as_f64()
+            .ok_or_else(|| "Puuttuva Dec kalibrointitiedoissa".to_string())?;
+        let uploaded_pixscale = calib["pixscale"].as_f64().unwrap_or(2.39);
+        let orientation = calib["orientation"].as_f64().unwrap_or(0.0);
+        let parity = calib["parity"].as_f64().unwrap_or(1.0);
+
+        // Adjust scale for downsampling
+        let actual_pixscale = uploaded_pixscale / scale_factor;
+        let center_ra_hours = (ra_deg / 15.0).clamp(0.0, 24.0);
+        let center_dec_deg = dec_deg.clamp(-90.0, 90.0);
+        let crpix_x = (image.width as f64) * 0.5;
+        let crpix_y = (image.height as f64) * 0.5;
+
+        let detected_stars = StarDetector::detect(image, 60);
+
+        let mut solution = WcsSolution {
+            center_ra_hours,
+            center_dec_deg,
+            crpix_x,
+            crpix_y,
+            arcsec_per_px: actual_pixscale,
+            rotation_deg: orientation,
+            parity,
+            image_width: image.width,
+            image_height: image.height,
+            solver_source: format!("Astrometry.net verkkoratkaisu (Työ #{})", job_id),
+            matched_objects: Vec::new(),
+            detected_stars,
+        };
+
+        // Populate catalog objects into the field
+        solution.populate_catalog_objects(catalog);
+
+        Ok(solution)
+    }
 }

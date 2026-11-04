@@ -1620,6 +1620,44 @@ fn test_wcs_plate_solver_and_catalog_annotation() {
     assert!((py_back - 400.0).abs() < 0.05, "py_back was {}", py_back);
 }
 
+#[test]
+fn test_astrometry_net_image_preparation_and_config() {
+    use photon_forge::core::image::AstroImage;
+    use photon_forge::processing::plate_solve::{AstrometryConfig, AstrometryNetSolver};
+
+    // 1. Verify default config and serialization
+    let mut cfg = AstrometryConfig::default();
+    cfg.api_key = "test_api_key_123".to_string();
+    cfg.use_online_by_default = true;
+    let json = serde_json::to_string(&cfg).expect("Config should serialize to JSON");
+    let deser: AstrometryConfig = serde_json::from_str(&json).expect("Config should deserialize");
+    assert_eq!(deser.api_key, "test_api_key_123");
+    assert!(deser.use_online_by_default);
+
+    // 2. Verify image preparation and JPEG encoding
+    let mut img = AstroImage::new_rgb(2000, 1500, 0.02);
+    // Draw central star
+    for dy in -3i32..=3 {
+        for dx in -3i32..=3 {
+            let px = img.get_pixel_mut((1000 + dx) as usize, (750 + dy) as usize);
+            px[0] = 0.9;
+            px[1] = 0.9;
+            px[2] = 0.9;
+        }
+    }
+
+    let (jpeg_bytes, scale_factor) = AstrometryNetSolver::prepare_image(&img)
+        .expect("Image preparation for Astrometry.net should succeed");
+
+    assert!(scale_factor > 1.4, "2000px image should be scaled down to max 1400px");
+    assert!(!jpeg_bytes.is_empty());
+    // JPEG header check: 0xFF 0xD8 0xFF
+    assert_eq!(jpeg_bytes[0], 0xFF);
+    assert_eq!(jpeg_bytes[1], 0xD8);
+    assert_eq!(jpeg_bytes[2], 0xFF);
+}
+
+
 
 
 
