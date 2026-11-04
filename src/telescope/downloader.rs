@@ -207,6 +207,14 @@ impl LiveIngestManager {
                 cfg.destination_path =
                     PathBuf::from(&home).join("Pictures").join("PhotonForge_Seestar");
             }
+            crate::telescope::mosaic::TelescopeModel::Dwarf3
+            | crate::telescope::mosaic::TelescopeModel::DwarfMini
+            | crate::telescope::mosaic::TelescopeModel::Dwarf2
+            | crate::telescope::mosaic::TelescopeModel::DwarfDraco => {
+                cfg.source_path = PathBuf::from("/Volumes/DWARF/DWARF_IMAGES");
+                cfg.destination_path =
+                    PathBuf::from(&home).join("Pictures").join("PhotonForge_Dwarf");
+            }
             crate::telescope::mosaic::TelescopeModel::CelestronOrigin => {
                 cfg.source_path = PathBuf::from("/Volumes/Origin");
                 cfg.destination_path =

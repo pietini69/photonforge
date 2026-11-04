@@ -923,7 +923,7 @@ fn test_telescope_and_star_chart() {
 
     // 7. Verify Smart Telescope Models & FOV specifications
     use photon_forge::telescope::mosaic::TelescopeModel;
-    assert_eq!(TelescopeModel::all().len(), 7);
+    assert_eq!(TelescopeModel::all().len(), 11);
     for m in TelescopeModel::all() {
         let (w, h) = m.fov_deg();
         assert!(w > 0.5 && w < 10.0, "Model {:?} FOV W out of range: {}", m, w);
@@ -936,6 +936,9 @@ fn test_telescope_and_star_chart() {
     assert!(TelescopeModel::SeestarS30Pro.fov_deg().0 > TelescopeModel::SeestarS30.fov_deg().0);
     assert!(TelescopeModel::SeestarS50Pro.fov_deg().0 > TelescopeModel::SeestarS50.fov_deg().0);
     assert_eq!(TelescopeModel::SeestarS50Pro.brand(), "ZWO Seestar");
+    assert_eq!(TelescopeModel::Dwarf3.brand(), "DwarfLab");
+    assert_eq!(TelescopeModel::DwarfMini.brand(), "DwarfLab");
+    assert_eq!(TelescopeModel::DwarfDraco.brand(), "DwarfLab");
     assert_eq!(TelescopeModel::CelestronOrigin.brand(), "Celestron");
     assert_eq!(TelescopeModel::AscomAlpaca.brand(), "ASCOM Alpaca");
     assert_eq!(TelescopeModel::Custom.brand(), "Custom");

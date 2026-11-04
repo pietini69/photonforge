@@ -248,6 +248,13 @@ impl TelescopeView {
                             ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
 
                             ui.separator();
+                            ui.label(RichText::new("── DwarfLab (Avoin API & Alpaca) ──").small().color(Color32::from_rgb(255, 180, 100)));
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
+
+                            ui.separator();
                             ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));
                             ui.selectable_value(&mut current_model, MosaicScopeModel::CelestronOrigin, "Celestron Origin RASA (335mm f/2.2, 1.3° × 0.8°)");
 
@@ -385,6 +392,32 @@ impl TelescopeView {
                     {
                         LiveIngestManager::open_seestar_smb(&state.seestar_ip);
                     }
+                    ui.add_space(2.0);
+                }
+
+                if telem.scope_model.brand() == "DwarfLab" {
+                    ui.add_space(2.0);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(crate::i18n::tr(
+                                "📡 DwarfLab Open API: Yhdistä laitteen IP-osoitteeseen portilla 9900 (WebSocket) tai käytä dwarfAlp ASCOM Alpaca -siltaa (portti 11111)."
+                            ))
+                            .small()
+                            .color(Color32::from_rgb(255, 190, 100))
+                        )
+                        .wrap(),
+                    );
+                    ui.add_space(1.0);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(crate::i18n::tr(
+                                "📁 Kuvat: DwarfLabin kuvat siirtyvät USB-kaapelilla (/Volumes/DWARF) tai sisäänrakennetun HTTP-palvelimen kautta (http://<IP>:8082)."
+                            ))
+                            .small()
+                            .color(Color32::from_rgb(140, 210, 255))
+                        )
+                        .wrap(),
+                    );
                     ui.add_space(2.0);
                 }
 
@@ -777,6 +810,13 @@ impl TelescopeView {
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30Pro, "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 4.0° × 2.2°)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
+
+                            ui.separator();
+                            ui.label(RichText::new("── DwarfLab (Avoin API & Alpaca) ──").small().color(Color32::from_rgb(255, 180, 100)));
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
 
                             ui.separator();
                             ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));

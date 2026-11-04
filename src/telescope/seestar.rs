@@ -299,7 +299,9 @@ impl SeestarClient {
                             let _dither_cfg = t.dither_config;
                             drop(t);
 
-                            if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                            if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                            {
                                 let connect_form = [("Connected", "true"), ("ClientID", "1"), ("ClientTransactionID", "1")];
                                 match alpaca_put(&alpaca_agent, &ip, port, "telescope/0/connected", &connect_form) {
                                     Ok(_) => {
@@ -345,11 +347,11 @@ impl SeestarClient {
                                         let mut t = telem_clone.lock().unwrap();
                                         t.connected = false;
                                         t.state = SeestarState::Disconnected;
-                                        t.last_log_message = format!("Alpaca-yhteysvirhe ({}): {}. Varmista että Seestar Alpaca on päällä puhelinsovelluksessa.", scope_name, e);
+                                        t.last_log_message = format!("Alpaca-yhteysvirhe ({}): {}. Varmista että Alpaca-palvelin on päällä.", scope_name, e);
                                     }
                                 }
                             } else {
-                                // Raw TCP protocols (supports both numeric IPs and hostnames like seestar.local)
+                                // Raw TCP / WebSocket protocols (supports both numeric IPs and hostnames like seestar.local)
                                 let addr_str = format!("{}:{}", ip, port);
                                 let resolved_addr = if let Ok(addr) = addr_str.parse::<SocketAddr>() {
                                     Some(addr)
@@ -372,6 +374,14 @@ impl SeestarClient {
                                                         "method": "get_device_state"
                                                     });
                                                     let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
+                                                }
+                                                crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                                    // DwarfLab Open API WebSocket probe to port 9900
+                                                    let ws_handshake = format!(
+                                                        "GET / HTTP/1.1\r\nHost: {}:{}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+                                                        ip, port
+                                                    );
+                                                    let _ = stream.write_all(ws_handshake.as_bytes());
                                                 }
                                                 _ => {}
                                             }
@@ -447,7 +457,9 @@ impl SeestarClient {
 
                             if is_sim {
                                 slew_start = Some((Instant::now(), start_ra, start_dec, ra, dec));
-                            } else if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                            } else if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                            {
                                 // Unpark first if parked
                                 let _ = alpaca_put(&alpaca_agent, &ip, port, "telescope/0/unpark", &[("ClientID", "1"), ("ClientTransactionID", "100")]);
                                 let ra_str = ra.to_string();
@@ -483,6 +495,17 @@ impl SeestarClient {
                                         let msg = format!("{}\r\n", payload);
                                         let _ = stream.write_all(msg.as_bytes());
                                     }
+                                    crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                        let payload = serde_json::json!({
+                                            "interface": 10005,
+                                            "cmd": "goto",
+                                            "target": name,
+                                            "ra": ra,
+                                            "dec": dec
+                                        });
+                                        let msg = format!("{}\r\n", payload);
+                                        let _ = stream.write_all(msg.as_bytes());
+                                    }
                                     _ => {}
                                 }
                             }
@@ -503,7 +526,9 @@ impl SeestarClient {
                             stack_timer = Instant::now();
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     let _ = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
@@ -535,6 +560,14 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10007,
+                                                "cmd": "start_stack"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -549,7 +582,9 @@ impl SeestarClient {
                             };
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     let _ = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
@@ -563,6 +598,14 @@ impl SeestarClient {
                                             let payload = serde_json::json!({
                                                 "id": 103,
                                                 "method": "iscope_stop_view"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10008,
+                                                "cmd": "stop_stack"
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
@@ -582,7 +625,9 @@ impl SeestarClient {
                             };
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     let res = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
@@ -604,6 +649,14 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10009,
+                                                "cmd": "park"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -618,7 +671,10 @@ impl SeestarClient {
                                 (t.ip_address.clone(), t.port, t.protocol, t.is_simulation, s_name)
                             };
 
-                            if !is_sim && proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                            if !is_sim
+                                && (proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111))
+                            {
                                 let res = alpaca_put(
                                     &alpaca_agent,
                                     &ip,
@@ -642,7 +698,9 @@ impl SeestarClient {
                             };
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     // 2 = LP filter, 1 = Normal/IR filter on Seestar S30/S50
                                     let pos_str = if active { "2" } else { "1" };
                                     let _ = alpaca_put(
@@ -653,14 +711,29 @@ impl SeestarClient {
                                         &[("Position", pos_str), ("ClientID", "1"), ("ClientTransactionID", "105")],
                                     );
                                 } else if let Some(stream) = &mut active_stream {
-                                    let filter_name = if active { "lp" } else { "clear" };
-                                    let payload = serde_json::json!({
-                                        "id": 105,
-                                        "method": "set_filter",
-                                        "params": { "filter": filter_name }
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let filter_name = if active { "lp" } else { "clear" };
+                                            let payload = serde_json::json!({
+                                                "id": 105,
+                                                "method": "set_filter",
+                                                "params": { "filter": filter_name }
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let filter_id = if active { 1 } else { 0 };
+                                            let payload = serde_json::json!({
+                                                "interface": 10011,
+                                                "cmd": "set_filter",
+                                                "filter": filter_id
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        _ => {}
+                                    }
                                 }
                             }
                         }
@@ -675,7 +748,9 @@ impl SeestarClient {
                             };
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     let pos_str = if active { "2" } else { "1" };
                                     let _ = alpaca_put(
                                         &alpaca_agent,
@@ -685,14 +760,29 @@ impl SeestarClient {
                                         &[("Position", pos_str), ("ClientID", "1"), ("ClientTransactionID", "105")],
                                     );
                                 } else if let Some(stream) = &mut active_stream {
-                                    let filter_name = if active { "lp" } else { "clear" };
-                                    let payload = serde_json::json!({
-                                        "id": 105,
-                                        "method": "set_filter",
-                                        "params": { "filter": filter_name }
-                                    });
-                                    let msg = format!("{}\r\n", payload);
-                                    let _ = stream.write_all(msg.as_bytes());
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let filter_name = if active { "lp" } else { "clear" };
+                                            let payload = serde_json::json!({
+                                                "id": 105,
+                                                "method": "set_filter",
+                                                "params": { "filter": filter_name }
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let filter_id = if active { 1 } else { 0 };
+                                            let payload = serde_json::json!({
+                                                "interface": 10011,
+                                                "cmd": "set_filter",
+                                                "filter": filter_id
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        _ => {}
+                                    }
                                 }
                             }
                         }
@@ -711,7 +801,9 @@ impl SeestarClient {
                             focus_start = Some((Instant::now(), prev_state));
 
                             if !is_sim {
-                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
                                     let _ = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
@@ -725,6 +817,14 @@ impl SeestarClient {
                                             let payload = serde_json::json!({
                                                 "id": 106,
                                                 "method": "auto_focal"
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let payload = serde_json::json!({
+                                                "interface": 10010,
+                                                "cmd": "autofocus"
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
@@ -901,7 +1001,9 @@ impl SeestarClient {
                 };
 
                 if is_conn && !is_sim {
-                    if cur_proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca {
+                    if cur_proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                        || (cur_proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && cur_port == 11111)
+                    {
                         if last_heartbeat.elapsed() > Duration::from_millis(1800) {
                             let mut poll_success = false;
 

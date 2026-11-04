@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum TelescopeProtocol {
     Seestar,      // ZWO Seestar TCP JSON-RPC (port 4700)
     AscomAlpaca,  // ASCOM Alpaca HTTP REST (port 11111 / 32323)
+    DwarfLab,     // DwarfLab Open API WebSocket / dwarfAlp (port 9900 / 11111)
 }
 
 impl TelescopeProtocol {
@@ -12,6 +13,7 @@ impl TelescopeProtocol {
         match self {
             TelescopeProtocol::Seestar => "Seestar TCP",
             TelescopeProtocol::AscomAlpaca => "ASCOM Alpaca",
+            TelescopeProtocol::DwarfLab => "DwarfLab API",
         }
     }
 }
@@ -22,6 +24,10 @@ pub enum TelescopeModel {
     SeestarS30Pro,
     SeestarS50,
     SeestarS50Pro,
+    Dwarf3,
+    DwarfMini,
+    Dwarf2,
+    DwarfDraco,
     CelestronOrigin,
     AscomAlpaca,
     Custom,
@@ -38,6 +44,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30Pro,
             TelescopeModel::SeestarS50,
             TelescopeModel::SeestarS50Pro,
+            TelescopeModel::Dwarf3,
+            TelescopeModel::DwarfMini,
+            TelescopeModel::Dwarf2,
+            TelescopeModel::DwarfDraco,
             TelescopeModel::CelestronOrigin,
             TelescopeModel::AscomAlpaca,
             TelescopeModel::Custom,
@@ -50,6 +60,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30Pro => "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 3.98° × 2.24°)",
             TelescopeModel::SeestarS50 => "ZWO Seestar S-50 (250mm f/5, 1.28° × 0.72°)",
             TelescopeModel::SeestarS50Pro => "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.45° × 1.38°)",
+            TelescopeModel::Dwarf3 => "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.93° × 1.65°)",
+            TelescopeModel::DwarfMini => "DwarfLab DWARF Mini (150mm f/5, 2.13° × 1.20°)",
+            TelescopeModel::Dwarf2 => "DwarfLab DWARF II (100mm f/4.2 4K, 3.19° × 1.79°)",
+            TelescopeModel::DwarfDraco => "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.62° × 1.21°)",
             TelescopeModel::CelestronOrigin => "Celestron Origin RASA (335mm f/2.2, 1.26° × 0.84°)",
             TelescopeModel::AscomAlpaca => "ASCOM Alpaca (Universal REST Mount)",
             TelescopeModel::Custom => "Oma määritys (Custom Telescope & FOV)",
@@ -62,6 +76,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30Pro => "Seestar S-30 Pro (4.0° × 2.2°)",
             TelescopeModel::SeestarS50 => "Seestar S-50 (1.3° × 0.7°)",
             TelescopeModel::SeestarS50Pro => "Seestar S-50 Pro (2.5° × 1.4°)",
+            TelescopeModel::Dwarf3 => "DWARF 3 (2.9° × 1.7°)",
+            TelescopeModel::DwarfMini => "DWARF Mini (2.1° × 1.2°)",
+            TelescopeModel::Dwarf2 => "DWARF II (3.2° × 1.8°)",
+            TelescopeModel::DwarfDraco => "DWARF DRACO (1.6° × 1.2°)",
             TelescopeModel::CelestronOrigin => "Celestron Origin (1.3° × 0.8°)",
             TelescopeModel::AscomAlpaca => "ASCOM Alpaca",
             TelescopeModel::Custom => "Oma määritys",
@@ -74,6 +92,10 @@ impl TelescopeModel {
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro => "ZWO Seestar",
+            TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::Dwarf2
+            | TelescopeModel::DwarfDraco => "DwarfLab",
             TelescopeModel::CelestronOrigin => "Celestron",
             TelescopeModel::AscomAlpaca => "ASCOM Alpaca",
             TelescopeModel::Custom => "Custom",
@@ -86,6 +108,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30Pro => (3.984, 2.242),
             TelescopeModel::SeestarS50 => (1.276, 0.718),
             TelescopeModel::SeestarS50Pro => (2.453, 1.380),
+            TelescopeModel::Dwarf3 => (2.933, 1.650),
+            TelescopeModel::DwarfMini => (2.127, 1.196),
+            TelescopeModel::Dwarf2 => (3.190, 1.794),
+            TelescopeModel::DwarfDraco => (1.618, 1.214),
             TelescopeModel::CelestronOrigin => (1.261, 0.841),
             TelescopeModel::AscomAlpaca | TelescopeModel::Custom => (2.000, 1.500),
         }
@@ -95,6 +121,10 @@ impl TelescopeModel {
         match self {
             TelescopeModel::SeestarS30 | TelescopeModel::SeestarS30Pro => 30.0,
             TelescopeModel::SeestarS50 | TelescopeModel::SeestarS50Pro => 50.0,
+            TelescopeModel::Dwarf3 => 35.0,
+            TelescopeModel::DwarfMini => 30.0,
+            TelescopeModel::Dwarf2 => 24.0,
+            TelescopeModel::DwarfDraco => 90.0,
             TelescopeModel::CelestronOrigin => 152.0,
             TelescopeModel::AscomAlpaca => 100.0,
             TelescopeModel::Custom => 80.0,
@@ -107,6 +137,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30Pro => 160.0,
             TelescopeModel::SeestarS50 => 250.0,
             TelescopeModel::SeestarS50Pro => 260.0,
+            TelescopeModel::Dwarf3 => 150.0,
+            TelescopeModel::DwarfMini => 150.0,
+            TelescopeModel::Dwarf2 => 100.0,
+            TelescopeModel::DwarfDraco => 340.0,
             TelescopeModel::CelestronOrigin => 335.0,
             TelescopeModel::AscomAlpaca => 500.0,
             TelescopeModel::Custom => 400.0,
@@ -125,10 +159,13 @@ impl TelescopeModel {
 
     pub fn sensor_name(&self) -> &'static str {
         match self {
-            TelescopeModel::SeestarS30 => "Sony IMX662",
+            TelescopeModel::SeestarS30 | TelescopeModel::DwarfMini => "Sony IMX662",
             TelescopeModel::SeestarS30Pro => "Sony IMX585 4K",
             TelescopeModel::SeestarS50 => "Sony IMX462",
             TelescopeModel::SeestarS50Pro => "1/1.2\" 4K CMOS (IMX585)",
+            TelescopeModel::Dwarf3 => "Sony IMX678 4K",
+            TelescopeModel::Dwarf2 => "Sony IMX415 4K",
+            TelescopeModel::DwarfDraco => "1/1.3\" 50MP Sony CMOS",
             TelescopeModel::CelestronOrigin => "Sony IMX178 (6.3 MP)",
             TelescopeModel::AscomAlpaca => "Alpaca Camera",
             TelescopeModel::Custom => "Custom Sensor",
@@ -137,11 +174,16 @@ impl TelescopeModel {
 
     pub fn resolution(&self) -> (u32, u32) {
         match self {
-            TelescopeModel::SeestarS30 | TelescopeModel::SeestarS50 => (1920, 1080),
+            TelescopeModel::SeestarS30 | TelescopeModel::SeestarS50 | TelescopeModel::DwarfMini => {
+                (1920, 1080)
+            }
             TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50Pro
+            | TelescopeModel::Dwarf3
+            | TelescopeModel::Dwarf2
             | TelescopeModel::AscomAlpaca
             | TelescopeModel::Custom => (3840, 2160),
+            TelescopeModel::DwarfDraco => (4096, 3072),
             TelescopeModel::CelestronOrigin => (3072, 2048),
         }
     }
@@ -151,7 +193,11 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
-            | TelescopeModel::SeestarS50Pro => 2.9,
+            | TelescopeModel::SeestarS50Pro
+            | TelescopeModel::DwarfMini => 2.9,
+            TelescopeModel::Dwarf3 => 2.0,
+            TelescopeModel::Dwarf2 => 1.45,
+            TelescopeModel::DwarfDraco => 2.4,
             TelescopeModel::CelestronOrigin => 2.4,
             TelescopeModel::AscomAlpaca | TelescopeModel::Custom => 3.76,
         }
@@ -163,6 +209,10 @@ impl TelescopeModel {
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro => "seestar.local",
+            TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::Dwarf2
+            | TelescopeModel::DwarfDraco => "192.168.88.1",
             TelescopeModel::CelestronOrigin => "192.168.1.1",
             TelescopeModel::AscomAlpaca => "127.0.0.1",
             TelescopeModel::Custom => "192.168.1.100",
@@ -175,6 +225,10 @@ impl TelescopeModel {
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro => 32323,
+            TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::Dwarf2
+            | TelescopeModel::DwarfDraco => 9900,
             TelescopeModel::CelestronOrigin | TelescopeModel::AscomAlpaca => 11111,
             TelescopeModel::Custom => 11111,
         }
@@ -186,6 +240,10 @@ impl TelescopeModel {
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro => TelescopeProtocol::AscomAlpaca,
+            TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::Dwarf2
+            | TelescopeModel::DwarfDraco => TelescopeProtocol::DwarfLab,
             TelescopeModel::CelestronOrigin | TelescopeModel::AscomAlpaca | TelescopeModel::Custom => {
                 TelescopeProtocol::AscomAlpaca
             }
@@ -198,6 +256,12 @@ impl TelescopeModel {
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
             | TelescopeModel::SeestarS50Pro => "smb://<IP>/EMMC Images/MyWorks",
+            TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::Dwarf2
+            | TelescopeModel::DwarfDraco => {
+                "http://<IP>:8082/sdcard/ tai USB /Volumes/DWARF"
+            }
             TelescopeModel::CelestronOrigin => "smb://<IP>/Origin tai Alpaca Direct",
             TelescopeModel::AscomAlpaca => "ASCOM Alpaca REST API (http://<IP>:11111/)",
             TelescopeModel::Custom => "Oma kansio tai verkkolevy",
@@ -209,7 +273,10 @@ impl TelescopeModel {
             TelescopeModel::SeestarS30
             | TelescopeModel::SeestarS30Pro
             | TelescopeModel::SeestarS50
-            | TelescopeModel::SeestarS50Pro => true,
+            | TelescopeModel::SeestarS50Pro
+            | TelescopeModel::Dwarf3
+            | TelescopeModel::DwarfMini
+            | TelescopeModel::DwarfDraco => true,
             _ => false,
         }
     }
