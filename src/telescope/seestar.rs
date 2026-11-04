@@ -373,13 +373,6 @@ impl SeestarClient {
                                                     });
                                                     let _ = stream.write_all(format!("{}\r\n", query).as_bytes());
                                                 }
-                                                crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                                    let hello = serde_json::json!({
-                                                        "interface": 10001,
-                                                        "cmd": "connect"
-                                                    });
-                                                    let _ = stream.write_all(format!("{}\r\n", hello).as_bytes());
-                                                }
                                                 _ => {}
                                             }
 
@@ -490,17 +483,6 @@ impl SeestarClient {
                                         let msg = format!("{}\r\n", payload);
                                         let _ = stream.write_all(msg.as_bytes());
                                     }
-                                    crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                        let payload = serde_json::json!({
-                                            "interface": 10005,
-                                            "cmd": "goto",
-                                            "target": name,
-                                            "ra": ra,
-                                            "dec": dec
-                                        });
-                                        let msg = format!("{}\r\n", payload);
-                                        let _ = stream.write_all(msg.as_bytes());
-                                    }
                                     _ => {}
                                 }
                             }
@@ -553,14 +535,6 @@ impl SeestarClient {
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
                                         }
-                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                            let payload = serde_json::json!({
-                                                "interface": 10007,
-                                                "cmd": "start_stack"
-                                            });
-                                            let msg = format!("{}\r\n", payload);
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
                                         _ => {}
                                     }
                                 }
@@ -589,14 +563,6 @@ impl SeestarClient {
                                             let payload = serde_json::json!({
                                                 "id": 103,
                                                 "method": "iscope_stop_view"
-                                            });
-                                            let msg = format!("{}\r\n", payload);
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                            let payload = serde_json::json!({
-                                                "interface": 10008,
-                                                "cmd": "stop_stack"
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
@@ -634,14 +600,6 @@ impl SeestarClient {
                                             let payload = serde_json::json!({
                                                 "id": 104,
                                                 "method": "scope_park"
-                                            });
-                                            let msg = format!("{}\r\n", payload);
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                            let payload = serde_json::json!({
-                                                "interface": 10009,
-                                                "cmd": "park"
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
@@ -767,14 +725,6 @@ impl SeestarClient {
                                             let payload = serde_json::json!({
                                                 "id": 106,
                                                 "method": "auto_focal"
-                                            });
-                                            let msg = format!("{}\r\n", payload);
-                                            let _ = stream.write_all(msg.as_bytes());
-                                        }
-                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
-                                            let payload = serde_json::json!({
-                                                "interface": 10010,
-                                                "cmd": "autofocus"
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());

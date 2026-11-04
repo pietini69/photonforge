@@ -242,29 +242,17 @@ impl TelescopeView {
                         .selected_text(current_model.display_short())
                         .show_ui(ui, |ui| {
                             ui.label(RichText::new("── ZWO Seestar ──").small().color(Color32::from_rgb(100, 200, 255)));
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
                             ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS30, "ZWO Seestar S-30 (150mm f/5, 2.1° × 1.2°)");
                             ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS30Pro, "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 4.0° × 2.2°)");
-
-                            ui.separator();
-                            ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
-
-                            ui.separator();
-                            ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::Vespera2, "Vaonis Vespera II (250mm f/5 4K, 2.6° × 1.4°)");
-                            ui.selectable_value(&mut current_model, MosaicScopeModel::VesperaPro, "Vaonis Vespera Pro (250mm f/5 12.5MP, 1.6° × 1.6°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
+                            ui.selectable_value(&mut current_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
 
                             ui.separator();
                             ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));
                             ui.selectable_value(&mut current_model, MosaicScopeModel::CelestronOrigin, "Celestron Origin RASA (335mm f/2.2, 1.3° × 0.8°)");
 
                             ui.separator();
-                            ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
+                            ui.label(RichText::new("── Universaali Alpaca / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
                             ui.selectable_value(&mut current_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
                             ui.selectable_value(&mut current_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys"));
                         });
@@ -785,29 +773,17 @@ impl TelescopeView {
                         .selected_text(state.mosaic_config.scope_model.display_short())
                         .show_ui(ui, |ui| {
                             ui.label(RichText::new("── ZWO Seestar ──").small().color(Color32::from_rgb(100, 200, 255)));
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30, "ZWO Seestar S-30 (150mm f/5, 2.1° × 1.2°)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS30Pro, "ZWO Seestar S-30 Pro (160mm f/5.3 4K, 4.0° × 2.2°)");
-
-                            ui.separator();
-                            ui.label(RichText::new("── DwarfLab ──").small().color(Color32::from_rgb(255, 180, 100)));
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf3, "DwarfLab DWARF 3 (150mm f/4.3 4K, 2.9° × 1.7°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfMini, "DwarfLab DWARF Mini (150mm f/5, 2.1° × 1.2°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Dwarf2, "DwarfLab DWARF II (100mm f/4.2 4K, 3.2° × 1.8°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::DwarfDraco, "DwarfLab DRACO (340mm f/3.8, 90mm aukko, 1.6° × 1.2°)");
-
-                            ui.separator();
-                            ui.label(RichText::new("── Vaonis ──").small().color(Color32::from_rgb(200, 160, 255)));
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Vespera2, "Vaonis Vespera II (250mm f/5 4K, 2.6° × 1.4°)");
-                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::VesperaPro, "Vaonis Vespera Pro (250mm f/5 12.5MP, 1.6° × 1.6°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50, "ZWO Seestar S-50 (250mm f/5, 1.3° × 0.7°)");
+                            ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::SeestarS50Pro, "ZWO Seestar S-50 Pro (260mm f/5.2 4K, 2.5° × 1.4°)");
 
                             ui.separator();
                             ui.label(RichText::new("── Celestron ──").small().color(Color32::from_rgb(255, 220, 120)));
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::CelestronOrigin, "Celestron Origin RASA (335mm f/2.2, 1.3° × 0.8°)");
 
                             ui.separator();
-                            ui.label(RichText::new("── Universaali / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
+                            ui.label(RichText::new("── Universaali Alpaca / Oma ──").small().color(Color32::from_rgb(180, 220, 180)));
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::AscomAlpaca, "ASCOM Alpaca (Universal REST Mount)");
                             ui.selectable_value(&mut state.mosaic_config.scope_model, MosaicScopeModel::Custom, crate::i18n::tr("Oma määritys"));
                         });

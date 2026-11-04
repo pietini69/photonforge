@@ -2568,10 +2568,9 @@ impl PhotonForgeApp {
                             .color(Color32::from_rgb(140, 220, 255)),
                     );
                     ui.add_space(4.0);
-                    ui.label(crate::i18n::tr("• ZWO Seestar S50, S50 Pro, S30 ja S30 Pro"));
-                    ui.label(crate::i18n::tr("• DwarfLab DWARF 3, DWARF Mini, DWARF II ja DRACO"));
-                    ui.label(crate::i18n::tr("• Vaonis Vespera II / Pro ja Celestron Origin"));
-                    ui.label(crate::i18n::tr("• ASCOM Alpaca -jalustat ja manuaaliset kamerat"));
+                    ui.label(crate::i18n::tr("• ZWO Seestar S50, S50 Pro, S30 ja S30 Pro (Alpaca + SMB)"));
+                    ui.label(crate::i18n::tr("• Celestron Origin RASA (Alpaca REST)"));
+                    ui.label(crate::i18n::tr("• ASCOM Alpaca -jalustat (Sky-Watcher, Pegasus Astro, AM5 jne.)"));
                 });
             });
         });
