@@ -1685,7 +1685,7 @@ impl eframe::App for PhotonForgeApp {
                             .color(Color32::from_rgb(80, 200, 255))
                             .strong(),
                     );
-                    ui.label(RichText::new("v1.0.0").color(Color32::from_rgb(150, 160, 180)));
+                    ui.label(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).color(Color32::from_rgb(150, 160, 180)));
 
                     let lang_label = match crate::i18n::current_lang() {
                         crate::i18n::UiLang::English => "🇬🇧 EN",
@@ -2000,7 +2000,7 @@ impl eframe::App for PhotonForgeApp {
 
         // Left Controls Panel
         if self.show_sidebar {
-            egui::SidePanel::left("left_sidebar_panel_v2")
+            egui::SidePanel::left("left_sidebar_panel_v4")
                 .default_width(430.0)
                 .width_range(370.0..=750.0)
                 .resizable(true)
@@ -2029,9 +2029,7 @@ impl eframe::App for PhotonForgeApp {
                         .auto_shrink([false, false])
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
-                            let content_w = (ui.available_width() - 10.0).max(260.0);
-                            ui.set_width(content_w);
-                            ui.set_max_width(content_w);
+                            ui.set_max_width(ui.available_width());
                             match self.active_tab {
                                 ActiveTab::Files => self.ui_files_tab(ui),
                                 ActiveTab::Stf => self.ui_stf_tab(ui),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 publish_to_gumroad.py
-Creates the official PhotonForge v1.0.0 multi-platform product on Gumroad with:
+Creates the official PhotonForge v1.0.2 multi-platform product on Gumroad with:
 - macOS Universal 2 (.dmg)
 - Windows x64 (.zip)
 - Linux x86_64 (.tar.gz)
@@ -47,7 +47,7 @@ TAGS = [
 SUMMARY = "High-performance 32-bit astrophotography processing, sub-pixel star alignment, 2x Drizzle, mosaic stitching & direct Smart Telescope control (ZWO Seestar S50/S50 Pro/S30/S30 Pro, DwarfLab DWARF 3/II, Vespera, Origin, ASCOM Alpaca) with 360° Sky Atlas and All-Night Sequencer for macOS, Windows and Linux."
 
 DESCRIPTION_HTML = """
-<h2>🔭 Meet PhotonForge v1.0.0: 32-Bit Astrophotography &amp; Smart Telescope Desktop Suite</h2>
+<h2>🔭 Meet PhotonForge v1.0.2: 32-Bit Astrophotography &amp; Smart Telescope Desktop Suite</h2>
 <p>
 <strong>PhotonForge</strong> is a modern, blazing-fast 32-bit astrophotography post-processing suite and direct <strong>Smart Telescope &amp; Mount</strong> desktop command station written in 100% pure <strong>Rust</strong>. Built for deep-sky astrophotographers and smart telescope owners, PhotonForge combines real-time telescope control, an interactive 360° Sky Atlas, an automated all-night multi-target sequencer, and PixInsight/Siril-class 32-bit floating-point calibration, registration, stacking, mosaic stitching, and post-processing in a single ~10 MB native application — with <strong>no subscriptions and no bloat</strong>.
 </p>
@@ -58,11 +58,11 @@ DESCRIPTION_HTML = """
 
 <hr>
 
-<h3>⚡ Key Features in v1.0.0</h3>
+<h3>⚡ Key Features in v1.0.2</h3>
 <ul>
   <li><strong>📡 Comprehensive Smart Telescope &amp; Mount Support:</strong>
     <ul>
-      <li><strong>ZWO Seestar Family (S50, S50 Pro 4K, S30, S30 Pro 4K):</strong> Direct Wi-Fi TCP/JSON-RPC control, telemetry, slewing joystick, autofocus, dual-band filter toggle, and SMB sub-frame synchronization.</li>
+      <li><strong>ZWO Seestar Family (S50, S50 Pro 4K, S30, S30 Pro 4K):</strong> Direct Wi-Fi ASCOM Alpaca REST &amp; TCP/JSON-RPC control (fully compatible with firmware 7.x &amp; 3.x+), auto-discovery, telemetry, slewing joystick, autofocus, dual-band filter toggle, and SMB sub-frame synchronization.</li>
       <li><strong>DwarfLab Family (DWARF 3 4K &amp; DWARF II):</strong> Open API control, telemetry, autofocus, and live image ingestion.</li>
       <li><strong>Vaonis Family (Vespera II 4K &amp; Vespera Pro 12.5 MP):</strong> Dedicated optics &amp; sensor FOV profiles with automated folder/FTP ingest live stacking.</li>
       <li><strong>Celestron Origin RASA:</strong> Native 335mm f/2.2 widefield FOV profiling and plate-solved mosaic planning.</li>
@@ -87,7 +87,7 @@ DESCRIPTION_HTML = """
       <li><strong>Batch Directory Processor</strong> &amp; <strong>Project Save/Load (<code>.pforge</code>)</strong></li>
     </ul>
   </li>
-  <li><strong>🌍 Bilingual Interface (🇬🇧 English / 🇫🇮 Suomi):</strong> Instant 1-click language switch in the top toolbar.</li>
+  <li><strong>🌍 Bilingual Interface (🇬🇧 English / 🇫🇮 Suomi):</strong> Instant 1-click language switch in the top toolbar with full English and Finnish localization.</li>
 </ul>
 
 <hr>
@@ -95,9 +95,9 @@ DESCRIPTION_HTML = """
 <h3>📦 What’s Included in Your Download</h3>
 <p>When you download PhotonForge, you receive immediate access to all three platform builds:</p>
 <ol>
-  <li><strong>macOS Universal 2 Installer (<code>PhotonForge-1.0.0-universal.dmg</code>):</strong> Native performance on all Macs — Apple Silicon (M1/M2/M3/M4) and Intel (x86_64). Code-signed with Apple Developer certificate.</li>
-  <li><strong>Windows 64-bit Standalone (<code>PhotonForge-1.0.0-windows-x64.zip</code>):</strong> Portable standalone executable for Windows 10 &amp; Windows 11. No installation bloat required.</li>
-  <li><strong>Linux 64-bit Package (<code>PhotonForge-1.0.0-linux-x86_64.tar.gz</code>):</strong> Native 64-bit ELF binary, system icon, and <code>.desktop</code> launcher for Ubuntu, Debian, Fedora, Arch, and Linux Mint.</li>
+  <li><strong>macOS Universal 2 Installer (<code>PhotonForge-1.0.2-universal.dmg</code>):</strong> Native performance on all Macs — Apple Silicon (M1/M2/M3/M4) and Intel (x86_64). Code-signed with Apple Developer certificate.</li>
+  <li><strong>Windows 64-bit Standalone (<code>PhotonForge-1.0.2-windows-x64.zip</code>):</strong> Portable standalone executable for Windows 10 &amp; Windows 11. No installation bloat required.</li>
+  <li><strong>Linux 64-bit Package (<code>PhotonForge-1.0.2-linux-x86_64.tar.gz</code>):</strong> Native 64-bit ELF binary, system icon, and <code>.desktop</code> launcher for Ubuntu, Debian, Fedora, Arch, and Linux Mint.</li>
 </ol>
 
 <hr>
@@ -106,38 +106,38 @@ DESCRIPTION_HTML = """
 
 <h4>🍎 macOS:</h4>
 <p>
-1. Open <code>PhotonForge-1.0.0-universal.dmg</code> and drag <strong>PhotonForge</strong> into your <em>Applications</em> folder.<br>
+1. Open <code>PhotonForge-1.0.2-universal.dmg</code> and drag <strong>PhotonForge</strong> into your <em>Applications</em> folder.<br>
 2. <strong>First Launch (Gatekeeper Security):</strong> Right-click (or Control-click) <code>PhotonForge.app</code> in Applications and select <strong>Open</strong>, or allow it in <strong>System Settings → Privacy &amp; Security → Open Anyway</strong>.
 </p>
 
 <h4>🪟 Windows:</h4>
 <p>
-1. Extract <code>PhotonForge-1.0.0-windows-x64.zip</code> into any folder and double-click <code>photon_forge.exe</code>.<br>
+1. Extract <code>PhotonForge-1.0.2-windows-x64.zip</code> into any folder and double-click <code>photon_forge.exe</code>.<br>
 2. If Windows SmartScreen appears on first launch, click <strong>"More info" → "Run anyway"</strong>.
 </p>
 
 <h4>🐧 Linux:</h4>
 <p>
-1. Extract <code>PhotonForge-1.0.0-linux-x86_64.tar.gz</code> and run <code>./photon_forge</code>.
+1. Extract <code>PhotonForge-1.0.2-linux-x86_64.tar.gz</code> and run <code>./photon_forge</code>.
 </p>
 
 <hr>
 
-<p><em>PhotonForge v1.0.0. Developed by Niko Pietinen. Open-source (GPLv3) with free updates included.</em></p>
+<p><em>PhotonForge v1.0.2. Developed by Niko Pietinen. Open-source (GPLv3) with free updates included.</em></p>
 """.strip()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Publish or draft PhotonForge v1.0.0 on Gumroad")
+    parser = argparse.ArgumentParser(description="Publish or draft PhotonForge v1.0.2 on Gumroad")
     parser.add_argument("--draft", action="store_true", help="Create as draft without publishing immediately")
     parser.add_argument("--dry-run", action="store_true", help="Print command without executing")
     parser.add_argument("--price", default=PRICE, help="Price in EUR (default: 0 for PWYW)")
     parser.add_argument("--suggested-price", default=SUGGESTED_PRICE, help="Suggested PWYW price in EUR (default: 5)")
     args = parser.parse_args()
 
-    mac_dmg = os.path.join(DIST_DIR, "PhotonForge-1.0.0-universal.dmg")
-    win_zip = os.path.join(DIST_DIR, "PhotonForge-1.0.0-windows-x64.zip")
-    lin_tar = os.path.join(DIST_DIR, "PhotonForge-1.0.0-linux-x86_64.tar.gz")
+    mac_dmg = os.path.join(DIST_DIR, "PhotonForge-1.0.2-universal.dmg")
+    win_zip = os.path.join(DIST_DIR, "PhotonForge-1.0.2-windows-x64.zip")
+    lin_tar = os.path.join(DIST_DIR, "PhotonForge-1.0.2-linux-x86_64.tar.gz")
 
     cover_img = os.path.join(ASSETS_DIR, "01_PhotonForge_Hero_Cover.jpg")
     thumb_img = os.path.join(ASSETS_DIR, "gumroad_thumb_square.jpg")
@@ -166,15 +166,15 @@ def main():
     cmd.extend([
         # File 1: macOS Universal
         "--file", mac_dmg,
-        "--file-name", "PhotonForge-1.0.0-macOS-Universal.dmg",
+        "--file-name", "PhotonForge-1.0.2-macOS-Universal.dmg",
         "--file-description", "macOS Universal 2 Installer (Apple Silicon M1-M4 & Intel 64-bit). macOS 11.0+",
         # File 2: Windows
         "--file", win_zip,
-        "--file-name", "PhotonForge-1.0.0-Windows-x64.zip",
+        "--file-name", "PhotonForge-1.0.2-Windows-x64.zip",
         "--file-description", "Windows 10 & 11 (64-bit) Portable Standalone Executable",
         # File 3: Linux
         "--file", lin_tar,
-        "--file-name", "PhotonForge-1.0.0-Linux-x86_64.tar.gz",
+        "--file-name", "PhotonForge-1.0.2-Linux-x86_64.tar.gz",
         "--file-description", "Linux 64-bit Native Binary, Desktop Launcher & App Icon",
     ])
 
@@ -189,7 +189,7 @@ def main():
         print(" ".join(cmd[:15]) + " ... [files and description omitted for brevity]")
         return
 
-    print("==> Creating PhotonForge v1.0.0 product on Gumroad...")
+    print("==> Creating PhotonForge v1.0.2 product on Gumroad...")
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode == 0:
         try:
@@ -199,17 +199,19 @@ def main():
             if prod_id and not args.draft:
                 subprocess.run(["gumroad", "products", "publish", prod_id], capture_output=True)
             custom_domain_url = "https://shop.pietiniart.com/l/photonforge"
-            print(f"==> SUCCESS: PhotonForge v1.0.0 LIVE on Gumroad! ID={prod_id} URL={custom_domain_url} ({prod_url})")
+            print(f"==> SUCCESS: PhotonForge v1.0.2 LIVE on Gumroad! ID={prod_id} URL={custom_domain_url} ({prod_url})")
             if os.path.exists(TRACKER_FILE):
                 with open(TRACKER_FILE, "r") as tf:
                     tracker = json.load(tf)
-                tracker["PhotonForge_v1_0_0"] = {
+                entry = {
                     "id": prod_id,
                     "url": prod_url,
                     "custom_domain_url": custom_domain_url,
                     "title": PRODUCT_NAME,
                     "time": datetime.datetime.now().isoformat()
                 }
+                tracker["PhotonForge_v1_0_2"] = entry
+                tracker["PhotonForge"] = entry
                 with open(TRACKER_FILE, "w") as tf:
                     json.dump(tracker, tf, indent=2)
         except Exception as e:
