@@ -2,6 +2,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -148,10 +149,13 @@ impl Default for SeestarTelemetry {
     }
 }
 
+pub type FrameCallback = Arc<dyn Fn(PathBuf) + Send + Sync>;
+
 pub struct SeestarClient {
     pub telemetry: Arc<Mutex<SeestarTelemetry>>,
     stop_signal: Arc<AtomicBool>,
     command_tx: std::sync::mpsc::Sender<SeestarCommand>,
+    frame_callback: Arc<Mutex<Option<FrameCallback>>>,
 }
 
 #[derive(Debug)]
@@ -272,20 +276,26 @@ impl SeestarClient {
         let telemetry = Arc::new(Mutex::new(default_telem));
         let stop_signal = Arc::new(AtomicBool::new(false));
         let (command_tx, command_rx) = std::sync::mpsc::channel();
+        let frame_callback: Arc<Mutex<Option<FrameCallback>>> = Arc::new(Mutex::new(None));
 
         let telem_clone = Arc::clone(&telemetry);
         let stop_clone = Arc::clone(&stop_signal);
+        let frame_cb_clone = Arc::clone(&frame_callback);
+        let self_cmd_tx = command_tx.clone();
 
         // Background worker thread for handling networking / simulation
         thread::spawn(move || {
             let alpaca_agent = ureq::AgentBuilder::new()
                 .timeout_connect(Duration::from_secs(3))
-                .timeout_read(Duration::from_secs(3))
-                .timeout_write(Duration::from_secs(3))
+                .timeout_read(Duration::from_secs(12))
+                .timeout_write(Duration::from_secs(4))
                 .build();
             let mut alpaca_fail_count: u32 = 0;
             let mut active_stream: Option<TcpStream> = None;
             let mut last_heartbeat = Instant::now();
+            let mut last_cam_check = Instant::now();
+            let mut alpaca_exposure_active = false;
+            let mut last_alpaca_exposure_kick = Instant::now();
             let mut stack_timer = Instant::now();
             let mut slew_start: Option<(Instant, f64, f64, f64, f64)> = None; // start_time, start_ra, start_dec, end_ra, end_dec
             let mut focus_start: Option<(Instant, SeestarState)> = None; // start_time, return_state
@@ -554,13 +564,15 @@ impl SeestarClient {
                                     || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
                                 {
                                     let exp_str = exp_secs.to_string();
-                                    let _ = alpaca_put(
+                                    let res = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
                                         port,
                                         "camera/0/startexposure",
                                         &[("Duration", &exp_str), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
                                     );
+                                    alpaca_exposure_active = res.is_ok();
+                                    last_alpaca_exposure_kick = Instant::now();
                                 } else if let Some(stream) = &mut active_stream {
                                     let dither_cfg = { telem_clone.lock().unwrap().dither_config };
                                     match proto {
@@ -580,7 +592,7 @@ impl SeestarClient {
 
                                             let payload = serde_json::json!({
                                                 "id": 102,
-                                                "method": "start_stack",
+                                                "method": "iscope_start_stack",
                                                 "params": {
                                                     "exp_ms": exp_secs * 1000,
                                                     "exposure": exp_secs
@@ -609,6 +621,7 @@ impl SeestarClient {
                                 t.last_log_message = format!("Pinoaminen pysäytetty kohteelle {}. Valotettu {} ruutua.", t.target_name, t.stacked_frames);
                                 (t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
                             };
+                            alpaca_exposure_active = false;
 
                             if !is_sim {
                                 if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
@@ -1059,6 +1072,117 @@ impl SeestarClient {
                     if cur_proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
                         || (cur_proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && cur_port == 11111)
                     {
+                        // Active Alpaca Live Stacking Loop
+                        if cur_state == SeestarState::Stacking {
+                            if last_cam_check.elapsed() >= Duration::from_millis(400) {
+                                last_cam_check = Instant::now();
+
+                                let ready = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "camera/0/imageready", &[("ClientID", "1")])
+                                    .ok()
+                                    .and_then(|v| v.get("Value").and_then(|val| val.as_bool()))
+                                    .unwrap_or(false);
+
+                                if ready {
+                                    let (target_name, exp_secs, scope_name, dither_cfg) = {
+                                        let t = telem_clone.lock().unwrap();
+                                        (t.target_name.clone(), t.exposure_seconds, t.scope_model.display_short().to_string(), t.dither_config)
+                                    };
+
+                                    if let Ok(val) = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "camera/0/imagearray", &[("ClientID", "1")]) {
+                                        if let Some(arr_val) = val.get("Value").and_then(|v| v.as_array()) {
+                                            let height = arr_val.len();
+                                            let width = arr_val.first().and_then(|row| row.as_array()).map(|r| r.len()).unwrap_or(0);
+
+                                            if width > 0 && height > 0 {
+                                                let mut pixels = Vec::with_capacity(width * height);
+                                                for row in arr_val {
+                                                    if let Some(row_arr) = row.as_array() {
+                                                        for p in row_arr {
+                                                            pixels.push(p.as_u64().unwrap_or(0) as u16);
+                                                        }
+                                                    }
+                                                }
+
+                                                let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/Shared".to_string());
+                                                let clean_target = if target_name.trim().is_empty() { "Target".to_string() } else { target_name.replace(['/', '\\', ' '], "_") };
+                                                let dest_dir = PathBuf::from(&home).join("Pictures").join("PhotonForge_Seestar").join(&clean_target);
+                                                let _ = std::fs::create_dir_all(&dest_dir);
+
+                                                let count = {
+                                                    let mut t = telem_clone.lock().unwrap();
+                                                    t.stacked_frames += 1;
+                                                    t.total_stack_seconds += exp_secs;
+                                                    t.last_log_message = format!("Ruutu #{} valotettu ja haettu ({}s)!", t.stacked_frames, exp_secs);
+                                                    t.stacked_frames
+                                                };
+
+                                                let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                                                let fits_filename = format!("{}_{}_sub{:04}.fits", clean_target, ts, count);
+                                                let fits_path = dest_dir.join(&fits_filename);
+
+                                                let bayer_pat = "GRBG";
+                                                if crate::core::fits::FitsParser::write_raw_16bit_fits(
+                                                    width,
+                                                    height,
+                                                    &pixels,
+                                                    &target_name,
+                                                    &scope_name,
+                                                    exp_secs,
+                                                    bayer_pat,
+                                                    &fits_path,
+                                                ).is_ok() {
+                                                    if let Some(cb) = frame_cb_clone.lock().unwrap().as_ref() {
+                                                        cb(fits_path);
+                                                    }
+                                                }
+
+                                                // Dither or next exposure
+                                                if dither_cfg.enabled && count % dither_cfg.interval_frames == 0 {
+                                                    alpaca_exposure_active = false;
+                                                    let _ = self_cmd_tx.send(SeestarCommand::TriggerDither {
+                                                        pixels: dither_cfg.step_pixels,
+                                                        settle_secs: dither_cfg.settle_seconds,
+                                                    });
+                                                } else {
+                                                    let exp_str = exp_secs.to_string();
+                                                    let res = alpaca_put(
+                                                        &alpaca_agent,
+                                                        &cur_ip,
+                                                        cur_port,
+                                                        "camera/0/startexposure",
+                                                        &[("Duration", &exp_str), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
+                                                    );
+                                                    alpaca_exposure_active = res.is_ok();
+                                                    last_alpaca_exposure_kick = Instant::now();
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let exp_secs = { telem_clone.lock().unwrap().exposure_seconds };
+                                    if !alpaca_exposure_active || last_alpaca_exposure_kick.elapsed().as_secs() > (exp_secs as u64 + 10) {
+                                        let cam_state = alpaca_get(&alpaca_agent, &cur_ip, cur_port, "camera/0/camerastate", &[("ClientID", "1")])
+                                            .ok()
+                                            .and_then(|v| v.get("Value").and_then(|val| val.as_i64()))
+                                            .unwrap_or(-1);
+
+                                        if cam_state == 0 { // cameraIdle
+                                            let exp_str = exp_secs.to_string();
+                                            let res = alpaca_put(
+                                                &alpaca_agent,
+                                                &cur_ip,
+                                                cur_port,
+                                                "camera/0/startexposure",
+                                                &[("Duration", &exp_str), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
+                                            );
+                                            alpaca_exposure_active = res.is_ok();
+                                            last_alpaca_exposure_kick = Instant::now();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if last_heartbeat.elapsed() > Duration::from_millis(1800) {
                             let mut poll_success = false;
 
@@ -1375,7 +1499,16 @@ impl SeestarClient {
             telemetry,
             stop_signal,
             command_tx,
+            frame_callback,
         }
+    }
+
+    pub fn set_on_frame_captured<F>(&self, callback: F)
+    where
+        F: Fn(PathBuf) + Send + Sync + 'static,
+    {
+        let mut cb = self.frame_callback.lock().unwrap();
+        *cb = Some(Arc::new(callback));
     }
 
     pub fn connect(&self, ip: &str) {

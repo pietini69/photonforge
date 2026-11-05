@@ -228,11 +228,18 @@ impl Default for PhotonForgeApp {
     fn default() -> Self {
         let live_stacker = LiveStackEngine::new();
         let live_ingest = Arc::new(LiveIngestManager::new());
+        let seestar_client = Arc::new(SeestarClient::new());
 
         // Connect Seestar live download directly to Live Stacker
         let stacker_sink = Arc::clone(&live_stacker);
         live_ingest.set_on_file_downloaded(move |path| {
             stacker_sink.feed_file(path);
+        });
+
+        // Connect Alpaca direct camera captures to Live Stacker
+        let stacker_sink2 = Arc::clone(&live_stacker);
+        seestar_client.set_on_frame_captured(move |path| {
+            stacker_sink2.feed_file(path);
         });
 
         Self {
@@ -302,7 +309,7 @@ impl Default for PhotonForgeApp {
             curves_selected_point: None,
             show_curves_window: false,
 
-            seestar_client: Arc::new(SeestarClient::new()),
+            seestar_client,
             night_sequencer: Arc::new(NightSequencer::new()),
             live_ingest: {
                 let cfg = crate::telescope::discovery::TelescopeConfig::load();

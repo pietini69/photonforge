@@ -583,6 +583,23 @@ impl TelescopeView {
                     }
                 });
 
+                if telem.state == SeestarState::Stacking {
+                    ui.add_space(2.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(format!("📸 Pinottu: {} kpl ({:.1} min)", telem.stacked_frames, telem.total_stack_seconds as f32 / 60.0))
+                                .strong()
+                                .color(Color32::from_rgb(255, 230, 100)),
+                        );
+                    });
+                }
+
+                ui.horizontal_wrapped(|ui| {
+                    if ui.small_button(RichText::new("📂 Avaa Seestar-verkkolevy (EMMC Images)").small()).on_hover_text(crate::i18n::tr("Avaa Seestarin sisäinen muisti Macin Finderissa (smb://seestar.local/EMMC Images) mobiiliapilla tallennettujen FITS-kuvien lukua varten")).clicked() {
+                        LiveIngestManager::open_seestar_smb(&state.seestar_ip);
+                    }
+                });
+
                 if !telem.last_log_message.is_empty() {
                     ui.add(
                         egui::Label::new(

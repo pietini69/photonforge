@@ -317,4 +317,69 @@ impl FitsParser {
 
         Ok(())
     }
+
+    pub fn write_raw_16bit_fits<P: AsRef<Path>>(
+        width: usize,
+        height: usize,
+        pixels: &[u16],
+        target_name: &str,
+        telescope_name: &str,
+        exp_secs: u32,
+        bayer: &str,
+        path: P,
+    ) -> Result<(), String> {
+        let mut file = File::create(path).map_err(|e| format!("Could not create file: {}", e))?;
+
+        let mut header = String::new();
+        header.push_str(&format!("{:<80}", "SIMPLE  =                    T / file conforms to FITS standard"));
+        header.push_str(&format!("{:<80}", "BITPIX  =                   16 / 16-bit signed integer with BZERO"));
+        header.push_str(&format!("{:<80}", "NAXIS   =                    2 / number of axes"));
+        header.push_str(&format!("{:<80}", format!("NAXIS1  = {:20} / width in pixels", width)));
+        header.push_str(&format!("{:<80}", format!("NAXIS2  = {:20} / height in pixels", height)));
+        header.push_str(&format!("{:<80}", "BZERO   =                32768 / offset for unsigned 16-bit"));
+        header.push_str(&format!("{:<80}", "BSCALE  =                  1.0 / scale"));
+        header.push_str(&format!("{:<80}", "PROGRAM = 'PhotonForge'         / software"));
+        if !target_name.is_empty() {
+            header.push_str(&format!("{:<80}", format!("OBJECT  = '{:<18}' / observed target", target_name)));
+        }
+        if !telescope_name.is_empty() {
+            header.push_str(&format!("{:<80}", format!("TELESCOP= '{:<18}' / telescope", telescope_name)));
+        }
+        header.push_str(&format!("{:<80}", format!("EXPTIME = {:20} / exposure time in seconds", exp_secs)));
+        if !bayer.is_empty() {
+            header.push_str(&format!("{:<80}", format!("BAYERPAT= '{:<18}' / Bayer color filter pattern", bayer)));
+            header.push_str(&format!("{:<80}", "XBAYROFF=                    1 / Bayer offset X"));
+            header.push_str(&format!("{:<80}", "YBAYROFF=                    0 / Bayer offset Y"));
+        }
+        header.push_str(&format!("{:<80}", "END"));
+
+        // Pad header to multiple of 2880 bytes
+        while header.len() % 2880 != 0 {
+            header.push_str(&format!("{:<80}", " "));
+        }
+
+        file.write_all(header.as_bytes())
+            .map_err(|e| format!("Failed to write header: {}", e))?;
+
+        // Write pixel data as big-endian signed 16-bit integers: (pixel as i32 - 32768) as i16
+        let total_pixels = width * height;
+        let mut bytes = vec![0u8; total_pixels * 2];
+        for i in 0..total_pixels {
+            let u16_val = if i < pixels.len() { pixels[i] } else { 0 };
+            let fits_i16 = (u16_val as i32 - 32768) as i16;
+            BigEndian::write_i16(&mut bytes[i * 2..i * 2 + 2], fits_i16);
+        }
+
+        file.write_all(&bytes)
+            .map_err(|e| format!("Failed to write pixels: {}", e))?;
+
+        let remainder = bytes.len() % 2880;
+        if remainder != 0 {
+            let padding = vec![0u8; 2880 - remainder];
+            file.write_all(&padding)
+                .map_err(|e| format!("Failed to pad data: {}", e))?;
+        }
+
+        Ok(())
+    }
 }
