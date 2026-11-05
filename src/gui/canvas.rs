@@ -176,17 +176,7 @@ impl ImageViewer {
             || self.last_stf_hash != stf_hash
             || self.last_curves_hash != curves_hash
         {
-            let params = if stf.enabled {
-                [
-                    (stf.channels[0].shadows, stf.channels[0].midtones, stf.channels[0].highlights),
-                    (stf.channels[1].shadows, stf.channels[1].midtones, stf.channels[1].highlights),
-                    (stf.channels[2].shadows, stf.channels[2].midtones, stf.channels[2].highlights),
-                ]
-            } else {
-                [(0.0, 0.5, 1.0); 3]
-            };
-
-            let mut rgb_bytes = image.to_rgb8_stretched_channels(&params);
+            let mut rgb_bytes = image.to_rgb8_with_stf(stf);
 
             if let Some(c) = curves {
                 c.apply_to_rgb8(&mut rgb_bytes);
@@ -941,9 +931,19 @@ impl ImageViewer {
 }
 
 fn compute_stf_hash(stf: &StfParameters) -> u64 {
-    let mut h: u64 = if stf.enabled { 1 } else { 0 };
+    let mut h: u64 = if stf.is_linear() { 0 } else { 1 };
+    h = h.wrapping_mul(31).wrapping_add(stf.mode as usize as u64);
     h = h.wrapping_mul(31).wrapping_add(if stf.linked_channels { 7 } else { 3 });
     h = h.wrapping_mul(31).wrapping_add(stf.target_bg.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.linear_exposure_ev.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.arcsinh_stretch.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.arcsinh_black.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.log_factor.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.log_black.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.ghs_d.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.ghs_b.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.gamma.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.gamma_black.to_bits() as u64);
     for ch in &stf.channels {
         h = h.wrapping_mul(31).wrapping_add(ch.shadows.to_bits() as u64);
         h = h.wrapping_mul(31).wrapping_add(ch.midtones.to_bits() as u64);

@@ -509,6 +509,166 @@ impl AstroImage {
         Ok(res_img)
     }
 
+    /// Convert image to 8-bit RGB byte buffer for display using the specified STF / stretch parameters
+    pub fn to_rgb8_with_stf(&self, stf: &crate::processing::stf::StfParameters) -> Vec<u8> {
+        let count = self.width * self.height;
+        let mut out = vec![0u8; count * 3];
+
+        if stf.is_linear() {
+            let mult = 2.0_f32.powf(stf.linear_exposure_ev) * 255.0;
+            out.par_chunks_exact_mut(3)
+                .enumerate()
+                .for_each(|(i, pixel)| {
+                    let src_idx = i * self.channels;
+                    if self.channels == 1 {
+                        let v = (self.data[src_idx] * mult).clamp(0.0, 255.0) as u8;
+                        pixel[0] = v;
+                        pixel[1] = v;
+                        pixel[2] = v;
+                    } else {
+                        for c in 0..3 {
+                            let v = (self.data[src_idx + c] * mult).clamp(0.0, 255.0) as u8;
+                            pixel[c] = v;
+                        }
+                    }
+                });
+            return out;
+        }
+
+        match stf.mode {
+            crate::processing::stf::StretchMode::Linear => {
+                // Already handled above
+                out
+            }
+            crate::processing::stf::StretchMode::AutoStf | crate::processing::stf::StretchMode::ManualMtf => {
+                let params = [
+                    (stf.channels[0].shadows, stf.channels[0].midtones, stf.channels[0].highlights),
+                    (stf.channels[1].shadows, stf.channels[1].midtones, stf.channels[1].highlights),
+                    (stf.channels[2].shadows, stf.channels[2].midtones, stf.channels[2].highlights),
+                ];
+                self.to_rgb8_stretched_channels(&params)
+            }
+            crate::processing::stf::StretchMode::Arcsinh => {
+                let s = stf.arcsinh_stretch.max(1.0);
+                let b = stf.arcsinh_black;
+                let norm = s.asinh();
+
+                out.par_chunks_exact_mut(3)
+                    .enumerate()
+                    .for_each(|(i, pixel)| {
+                        let src_idx = i * self.channels;
+                        if self.channels == 1 {
+                            let v = (self.data[src_idx] - b).max(0.0);
+                            let stretched = (s * v).asinh() / norm;
+                            let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            pixel[0] = byte;
+                            pixel[1] = byte;
+                            pixel[2] = byte;
+                        } else {
+                            let r = self.data[src_idx];
+                            let g = self.data[src_idx + 1];
+                            let bl = self.data[src_idx + 2];
+                            let intensity = (r + g + bl) / 3.0;
+                            let v = (intensity - b).max(0.0);
+                            if intensity > 1e-6 {
+                                let stretched_i = (s * v).asinh() / norm;
+                                let scale = stretched_i / intensity;
+                                pixel[0] = (r * scale * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[1] = (g * scale * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[2] = (bl * scale * 255.0).clamp(0.0, 255.0) as u8;
+                            } else {
+                                pixel[0] = 0;
+                                pixel[1] = 0;
+                                pixel[2] = 0;
+                            }
+                        }
+                    });
+                out
+            }
+            crate::processing::stf::StretchMode::Logarithmic => {
+                let a = stf.log_factor.max(1.0);
+                let b = stf.log_black;
+                let norm = (1.0 + a).ln().max(1e-6);
+
+                out.par_chunks_exact_mut(3)
+                    .enumerate()
+                    .for_each(|(i, pixel)| {
+                        let src_idx = i * self.channels;
+                        if self.channels == 1 {
+                            let v = (self.data[src_idx] - b).max(0.0);
+                            let stretched = (1.0 + a * v).ln() / norm;
+                            let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            pixel[0] = byte;
+                            pixel[1] = byte;
+                            pixel[2] = byte;
+                        } else {
+                            for c in 0..3 {
+                                let v = (self.data[src_idx + c] - b).max(0.0);
+                                let stretched = (1.0 + a * v).ln() / norm;
+                                pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            }
+                        }
+                    });
+                out
+            }
+            crate::processing::stf::StretchMode::Ghs => {
+                let d = stf.ghs_d.max(0.1);
+                let b = stf.ghs_b;
+                let sub0 = (d * (-b)).asinh();
+                let den = ((d * (1.0 - b)).asinh() - sub0).max(1e-6);
+
+                out.par_chunks_exact_mut(3)
+                    .enumerate()
+                    .for_each(|(i, pixel)| {
+                        let src_idx = i * self.channels;
+                        if self.channels == 1 {
+                            let v = self.data[src_idx];
+                            let num = (d * (v - b)).asinh() - sub0;
+                            let stretched = (num / den).clamp(0.0, 1.0);
+                            let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            pixel[0] = byte;
+                            pixel[1] = byte;
+                            pixel[2] = byte;
+                        } else {
+                            for c in 0..3 {
+                                let v = self.data[src_idx + c];
+                                let num = (d * (v - b)).asinh() - sub0;
+                                let stretched = (num / den).clamp(0.0, 1.0);
+                                pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            }
+                        }
+                    });
+                out
+            }
+            crate::processing::stf::StretchMode::Root => {
+                let gamma = stf.gamma.clamp(0.05, 2.0);
+                let b = stf.gamma_black;
+                let den = (1.0 - b).max(1e-5);
+
+                out.par_chunks_exact_mut(3)
+                    .enumerate()
+                    .for_each(|(i, pixel)| {
+                        let src_idx = i * self.channels;
+                        if self.channels == 1 {
+                            let v = ((self.data[src_idx] - b) / den).clamp(0.0, 1.0);
+                            let stretched = v.powf(gamma);
+                            let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            pixel[0] = byte;
+                            pixel[1] = byte;
+                            pixel[2] = byte;
+                        } else {
+                            for c in 0..3 {
+                                let v = ((self.data[src_idx + c] - b) / den).clamp(0.0, 1.0);
+                                let stretched = v.powf(gamma);
+                                pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            }
+                        }
+                    });
+                out
+            }
+        }
+    }
+
     /// Convert to 8-bit RGB byte buffer for display or saving using independent parameters per channel
     pub fn to_rgb8_stretched_channels(&self, channels_params: &[(f32, f32, f32)]) -> Vec<u8> {
         let count = self.width * self.height;

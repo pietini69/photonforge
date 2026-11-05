@@ -24,6 +24,7 @@ pub struct StackingConfig {
     pub min_coverage_ratio: f32,
     pub auto_crop_borders: bool,
     pub drizzle_scale: usize,
+    pub auto_stretch_after_stack: bool,
 }
 
 impl Default for StackingConfig {
@@ -39,6 +40,7 @@ impl Default for StackingConfig {
             min_coverage_ratio: 0.10,
             auto_crop_borders: true,
             drizzle_scale: 1,
+            auto_stretch_after_stack: false, // Default is FALSE: newly stacked images are pure LINEAR
         }
     }
 }

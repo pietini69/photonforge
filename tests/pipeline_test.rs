@@ -1661,6 +1661,91 @@ fn test_astrometry_net_image_preparation_and_config() {
     assert_eq!(jpeg_bytes[2], 0xFF);
 }
 
+#[test]
+fn test_stretch_modes_and_linear_default_after_stacking() {
+    use photon_forge::core::image::AstroImage;
+    use photon_forge::processing::histogram::HistogramProcessor;
+    use photon_forge::processing::stacking::StackingConfig;
+    use photon_forge::processing::stf::{StfParameters, StretchMode};
+
+    // 1. Verify StackingConfig default: auto_stretch_after_stack is FALSE (Linear default)
+    let stack_cfg = StackingConfig::default();
+    assert!(!stack_cfg.auto_stretch_after_stack, "Default after stacking must be pure LINEAR (no auto-stretch)");
+
+    // 2. Create a synthetic test image with dark linear background (0.01..0.02) and bright core/stars (0.95)
+    let mut img = AstroImage::new_rgb(100, 100, 0.015);
+    for y in 0..100 {
+        for x in 0..100 {
+            let px = img.get_pixel_mut(x, y);
+            let n = ((x * 17 + y * 31) % 100) as f32 / 5000.0; // small variation so MAD > 0
+            px[0] = 0.015 + n;
+            px[1] = 0.018 + n;
+            px[2] = 0.022 + n;
+        }
+    }
+    // Set bright red nebula and blue star
+    let neb = img.get_pixel_mut(50, 50);
+    neb[0] = 0.8;
+    neb[1] = 0.2;
+    neb[2] = 0.1;
+
+    // 3. Test Linear mode (Pure 1:1 display)
+    let mut stf = StfParameters::default();
+    stf.set_linear();
+    assert!(stf.is_linear());
+    assert_eq!(stf.mode, StretchMode::Linear);
+
+    let linear_bytes = img.to_rgb8_with_stf(&stf);
+    assert_eq!(linear_bytes.len(), 100 * 100 * 3);
+    // Background should be very dark in linear mode (approx 0.01 * 255 = 2..3)
+    assert!(linear_bytes[0] <= 4, "Linear background must remain dark (raw pixel value)");
+
+    // 4. Test Auto-STF mode
+    stf.set_mode(StretchMode::AutoStf);
+    let auto_stf = StfParameters::compute_auto(&img, false);
+    stf.channels = auto_stf.channels;
+    assert!(!stf.is_linear());
+    let stf_bytes = img.to_rgb8_with_stf(&stf);
+    println!("stf_bytes[0] = {}, linear_bytes[0] = {}, ch0 = {:?}", stf_bytes[0], linear_bytes[0], stf.channels[0]);
+    assert!(stf_bytes[0] >= linear_bytes[0]);
+
+    // 5. Test Arcsinh stretch (color preserving)
+    stf.set_mode(StretchMode::Arcsinh);
+    stf.arcsinh_stretch = 50.0;
+    stf.arcsinh_black = 0.005;
+    let arcsinh_bytes = img.to_rgb8_with_stf(&stf);
+    assert!(!arcsinh_bytes.is_empty());
+    // Nebula pixel (50, 50) index = (50 * 100 + 50) * 3 = 15150
+    let neb_idx = (50 * 100 + 50) * 3;
+    assert!(arcsinh_bytes[neb_idx] > arcsinh_bytes[neb_idx + 1]); // Red channel dominates
+    assert!(arcsinh_bytes[neb_idx] > 200);
+
+    // 6. Test Logarithmic stretch
+    stf.set_mode(StretchMode::Logarithmic);
+    stf.log_factor = 1000.0;
+    let log_bytes = img.to_rgb8_with_stf(&stf);
+    assert!(!log_bytes.is_empty());
+
+    // 7. Test Generalized Hyperbolic Stretch (GHS)
+    stf.set_mode(StretchMode::Ghs);
+    stf.ghs_d = 12.0;
+    stf.ghs_b = 0.02;
+    let ghs_bytes = img.to_rgb8_with_stf(&stf);
+    assert!(!ghs_bytes.is_empty());
+
+    // 8. Test Root / Gamma stretch
+    stf.set_mode(StretchMode::Root);
+    stf.gamma = 0.5; // Square root
+    let root_bytes = img.to_rgb8_with_stf(&stf);
+    assert!(!root_bytes.is_empty());
+
+    // 9. Test Permanent Stretch Baking
+    let perm_stretched = HistogramProcessor::apply_permanent_stretch_params(&img, &stf);
+    assert_eq!(perm_stretched.width, 100);
+    assert_eq!(perm_stretched.height, 100);
+    assert!(perm_stretched.data[0] > 0.05); // Data itself is now stretched
+}
+
 
 
 

@@ -1,6 +1,63 @@
 use crate::core::image::AstroImage;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StretchMode {
+    /// Pure raw linear 32-bit floating point directly mapped to screen (Linear display)
+    Linear,
+    /// Automated Screen Transfer Function (PixInsight-style Median + MAD)
+    AutoStf,
+    /// Manual Shadows / Midtones / Highlights MTF sliders
+    ManualMtf,
+    /// Color-preserving Arcsinh stretch (Lupton/Siril algorithm)
+    Arcsinh,
+    /// Logarithmic stretch (for high dynamic range nebula/galaxy cores)
+    Logarithmic,
+    /// Generalized Hyperbolic Stretch (GHS-style localized contrast)
+    Ghs,
+    /// Root / Gamma soft stretch
+    Root,
+}
+
+impl StretchMode {
+    pub fn all() -> &'static [StretchMode] {
+        &[
+            StretchMode::Linear,
+            StretchMode::AutoStf,
+            StretchMode::ManualMtf,
+            StretchMode::Arcsinh,
+            StretchMode::Logarithmic,
+            StretchMode::Ghs,
+            StretchMode::Root,
+        ]
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            StretchMode::Linear => "🟢 Lineaarinen (Raaka)",
+            StretchMode::AutoStf => "⚡ Auto-STF (Automaatti)",
+            StretchMode::ManualMtf => "🎚 Manuaalinen MTF",
+            StretchMode::Arcsinh => "🌈 Arcsinh (Värit säilyttävä)",
+            StretchMode::Logarithmic => "📐 Logaritminen (HDR)",
+            StretchMode::Ghs => "📈 Hyperbolinen (GHS)",
+            StretchMode::Root => "🌿 Juuri (Gamma)",
+        }
+    }
+
+    pub fn short_name(&self) -> &'static str {
+        match self {
+            StretchMode::Linear => "Lineaarinen",
+            StretchMode::AutoStf => "Auto-STF",
+            StretchMode::ManualMtf => "Manuaali-MTF",
+            StretchMode::Arcsinh => "Arcsinh",
+            StretchMode::Logarithmic => "Logaritminen",
+            StretchMode::Ghs => "GHS",
+            StretchMode::Root => "Juuri",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ChannelStf {
     pub shadows: f32,
     pub midtones: f32,
@@ -17,26 +74,74 @@ impl Default for ChannelStf {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StfParameters {
+    pub mode: StretchMode,
     pub enabled: bool,
     pub linked_channels: bool,
     pub target_bg: f32,
     pub channels: [ChannelStf; 3],
+
+    // Linear mode exposure adjustment (-4.0 .. +4.0 EV, default 0.0)
+    pub linear_exposure_ev: f32,
+
+    // Arcsinh stretch parameters
+    pub arcsinh_stretch: f32, // 1.0 .. 1000.0, default 100.0
+    pub arcsinh_black: f32,   // 0.0 .. 0.2, default 0.0
+
+    // Logarithmic stretch parameters
+    pub log_factor: f32,      // 10.0 .. 50000.0, default 1000.0
+    pub log_black: f32,       // 0.0 .. 0.2, default 0.0
+
+    // Generalized Hyperbolic Stretch parameters
+    pub ghs_d: f32,           // 1.0 .. 50.0, default 10.0
+    pub ghs_b: f32,           // 0.0 .. 0.5, default 0.05
+
+    // Root / Gamma stretch parameters
+    pub gamma: f32,           // 0.1 .. 1.0, default 0.5
+    pub gamma_black: f32,     // 0.0 .. 0.2, default 0.0
 }
 
 impl Default for StfParameters {
     fn default() -> Self {
         Self {
+            mode: StretchMode::AutoStf,
             enabled: true,
             linked_channels: false, // Default unlinked for natural background neutralization on OSC/color
             target_bg: 0.10,        // PixInsight-style deep space background level (0.08 - 0.12)
             channels: [ChannelStf::default(), ChannelStf::default(), ChannelStf::default()],
+            linear_exposure_ev: 0.0,
+            arcsinh_stretch: 100.0,
+            arcsinh_black: 0.0,
+            log_factor: 1000.0,
+            log_black: 0.0,
+            ghs_d: 10.0,
+            ghs_b: 0.05,
+            gamma: 0.5,
+            gamma_black: 0.0,
         }
     }
 }
 
 impl StfParameters {
+    pub fn is_linear(&self) -> bool {
+        self.mode == StretchMode::Linear || !self.enabled
+    }
+
+    pub fn set_linear(&mut self) {
+        self.mode = StretchMode::Linear;
+        self.enabled = false;
+    }
+
+    pub fn set_mode(&mut self, mode: StretchMode) {
+        self.mode = mode;
+        if mode == StretchMode::Linear {
+            self.enabled = false;
+        } else {
+            self.enabled = true;
+        }
+    }
+
     /// Computes PixInsight-style Auto-STF parameters with default deep-space target background (0.10)
     pub fn compute_auto(image: &AstroImage, linked: bool) -> Self {
         Self::compute_auto_with_target(image, linked, 0.10)
@@ -45,10 +150,20 @@ impl StfParameters {
     /// Computes PixInsight-style Auto-STF parameters with customizable target background level
     pub fn compute_auto_with_target(image: &AstroImage, linked: bool, target_bg: f32) -> Self {
         let mut stf = Self {
+            mode: StretchMode::AutoStf,
             enabled: true,
             linked_channels: linked,
             target_bg: target_bg.clamp(0.01, 0.50),
             channels: [ChannelStf::default(), ChannelStf::default(), ChannelStf::default()],
+            linear_exposure_ev: 0.0,
+            arcsinh_stretch: 100.0,
+            arcsinh_black: 0.0,
+            log_factor: 1000.0,
+            log_black: 0.0,
+            ghs_d: 10.0,
+            ghs_b: 0.05,
+            gamma: 0.5,
+            gamma_black: 0.0,
         };
 
         let target_bg = stf.target_bg;

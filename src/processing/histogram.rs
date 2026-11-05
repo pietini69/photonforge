@@ -19,6 +19,100 @@ impl HistogramProcessor {
         hist
     }
 
+    /// Permanent stretch: applies any STF stretch parameters directly to image 32-bit float data
+    pub fn apply_permanent_stretch_params(
+        image: &AstroImage,
+        stf: &crate::processing::stf::StfParameters,
+    ) -> AstroImage {
+        if stf.is_linear() {
+            let mult = 2.0_f32.powf(stf.linear_exposure_ev);
+            let mut out = image.clone();
+            out.data.par_iter_mut().for_each(|v| {
+                *v = (*v * mult).clamp(0.0, 1.0);
+            });
+            return out;
+        }
+
+        match stf.mode {
+            crate::processing::stf::StretchMode::Linear => image.clone(),
+            crate::processing::stf::StretchMode::AutoStf | crate::processing::stf::StretchMode::ManualMtf => {
+                let params = [
+                    (stf.channels[0].shadows, stf.channels[0].midtones, stf.channels[0].highlights),
+                    (stf.channels[1].shadows, stf.channels[1].midtones, stf.channels[1].highlights),
+                    (stf.channels[2].shadows, stf.channels[2].midtones, stf.channels[2].highlights),
+                ];
+                Self::apply_permanent_stretch_channels(image, &params)
+            }
+            crate::processing::stf::StretchMode::Arcsinh => {
+                let s = stf.arcsinh_stretch.max(1.0);
+                let b = stf.arcsinh_black;
+                let norm = s.asinh();
+                let mut out = image.clone();
+
+                out.data
+                    .par_chunks_exact_mut(image.channels)
+                    .for_each(|pixel| {
+                        if image.channels == 1 {
+                            let v = (pixel[0] - b).max(0.0);
+                            pixel[0] = ((s * v).asinh() / norm).clamp(0.0, 1.0);
+                        } else {
+                            let intensity = (pixel[0] + pixel[1] + pixel[2]) / 3.0;
+                            let v = (intensity - b).max(0.0);
+                            if intensity > 1e-6 {
+                                let stretched_i = (s * v).asinh() / norm;
+                                let scale = stretched_i / intensity;
+                                for c in 0..3 {
+                                    pixel[c] = (pixel[c] * scale).clamp(0.0, 1.0);
+                                }
+                            } else {
+                                pixel[0] = 0.0;
+                                pixel[1] = 0.0;
+                                pixel[2] = 0.0;
+                            }
+                        }
+                    });
+                out
+            }
+            crate::processing::stf::StretchMode::Logarithmic => {
+                let a = stf.log_factor.max(1.0);
+                let b = stf.log_black;
+                let norm = (1.0 + a).ln().max(1e-6);
+                let mut out = image.clone();
+
+                out.data.par_iter_mut().for_each(|v| {
+                    let val = (*v - b).max(0.0);
+                    *v = ((1.0 + a * val).ln() / norm).clamp(0.0, 1.0);
+                });
+                out
+            }
+            crate::processing::stf::StretchMode::Ghs => {
+                let d = stf.ghs_d.max(0.1);
+                let b = stf.ghs_b;
+                let sub0 = (d * (-b)).asinh();
+                let den = ((d * (1.0 - b)).asinh() - sub0).max(1e-6);
+                let mut out = image.clone();
+
+                out.data.par_iter_mut().for_each(|v| {
+                    let num = (d * (*v - b)).asinh() - sub0;
+                    *v = (num / den).clamp(0.0, 1.0);
+                });
+                out
+            }
+            crate::processing::stf::StretchMode::Root => {
+                let gamma = stf.gamma.clamp(0.05, 2.0);
+                let b = stf.gamma_black;
+                let den = (1.0 - b).max(1e-5);
+                let mut out = image.clone();
+
+                out.data.par_iter_mut().for_each(|v| {
+                    let norm = ((*v - b) / den).clamp(0.0, 1.0);
+                    *v = norm.powf(gamma).clamp(0.0, 1.0);
+                });
+                out
+            }
+        }
+    }
+
     /// Permanent stretch: applies shadows, midtones, highlights to image data per channel
     pub fn apply_permanent_stretch_channels(
         image: &AstroImage,

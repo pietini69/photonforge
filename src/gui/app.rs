@@ -18,7 +18,7 @@ use crate::processing::pcc::{
 use crate::processing::plate_solve::{
     AnnotationConfig, AstrometryConfig, AstrometryNetSolver, PlateSolver, WcsSolution,
 };
-use crate::processing::stf::{ChannelStf, StfParameters};
+use crate::processing::stf::StfParameters;
 use crate::processing::syqon::{SyQonEngine, SyQonModel, SyQonProgress, SyQonResult, SyQonTask};
 use super::telescope_view::{TelescopeCenterView, TelescopeView, TelescopeViewState};
 use crate::telescope::catalog::{load_sky_catalog, SkyObject};
@@ -1389,19 +1389,15 @@ impl PhotonForgeApp {
 
     fn apply_permanent_stf(&mut self) {
         let Some(img) = self.active_image_arc() else { return };
-        self.push_undo(crate::i18n::tr("Pysyvä venytys (Histogram Stretch)"));
-        let params = [
-            (self.stf_params.channels[0].shadows, self.stf_params.channels[0].midtones, self.stf_params.channels[0].highlights),
-            (self.stf_params.channels[1].shadows, self.stf_params.channels[1].midtones, self.stf_params.channels[1].highlights),
-            (self.stf_params.channels[2].shadows, self.stf_params.channels[2].midtones, self.stf_params.channels[2].highlights),
-        ];
-        let mut stretched = HistogramProcessor::apply_permanent_stretch_channels(&img, &params);
-        stretched.metadata.file_name = format!("{}_Stretched.fits", img.metadata.file_name);
+        let mode_desc = self.stf_params.mode.short_name();
+        self.push_undo(&format!("Pysyvä venytys ({})", mode_desc));
+        let mut stretched = HistogramProcessor::apply_permanent_stretch_params(&img, &self.stf_params);
+        stretched.metadata.file_name = format!("{}_{}.fits", img.metadata.file_name.trim_end_matches(".fits"), mode_desc);
         self.images.push(Arc::new(stretched));
         self.active_image_index = self.images.len() - 1;
         self.image_counter += 1;
-        self.stf_params.enabled = false; // Data is already stretched now
-        self.status_message = crate::i18n::tr("Pysyvä venytys (Histogram Stretch) suoritettu.").to_string();
+        self.stf_params.set_linear(); // Stretched data is now displayed in pure linear 1:1 view
+        self.status_message = format!("Pysyvä venytys ({}) suoritettu. Kuva avattu lineaarisessa näyttötilassa.", mode_desc);
     }
 
     fn run_auto_crop(&mut self) {
@@ -1628,17 +1624,30 @@ impl eframe::App for PhotonForgeApp {
                             self.active_image_index = self.images.len() - 1;
                             self.image_counter += 1;
                             if let Some(img) = self.active_image() {
-                                self.stf_params = StfParameters::compute_auto_with_target(
+                                let mut auto_stf = StfParameters::compute_auto_with_target(
                                     img,
                                     self.stf_params.linked_channels,
                                     self.stf_params.target_bg,
                                 );
+                                if self.stacking_config.auto_stretch_after_stack {
+                                    auto_stf.mode = crate::processing::stf::StretchMode::AutoStf;
+                                    auto_stf.enabled = true;
+                                } else {
+                                    auto_stf.set_linear();
+                                }
+                                self.stf_params = auto_stf;
                             }
+                            let stretch_note = if self.stacking_config.auto_stretch_after_stack {
+                                " (Auto-STF)"
+                            } else {
+                                " (Lineaaritila)"
+                            };
                             self.status_message = format!(
-                                "Pinoaminen valmis! ({} kuvaa -> {} master-kuva(a), kesto: {:.2} s)",
+                                "Pinoaminen valmis! ({} kuvaa -> {} master-kuva(a), kesto: {:.2} s{})",
                                 total_imgs,
                                 count,
-                                duration.as_secs_f32()
+                                duration.as_secs_f32(),
+                                stretch_note
                             );
                         }
                         Err(e) => {
@@ -1905,36 +1914,89 @@ impl eframe::App for PhotonForgeApp {
 
                     ui.separator();
 
-                    if ui
-                        .button(
-                            RichText::new("⚡ Auto-STF")
-                                .color(Color32::from_rgb(255, 215, 0))
+                    // 1. Direct Linear / Stretch Toggle Button
+                    if self.stf_params.is_linear() {
+                        let lin_btn = egui::Button::new(
+                            RichText::new("🟢 Lineaarinen (PÄÄLLÄ)")
+                                .color(Color32::from_rgb(100, 255, 150))
                                 .strong(),
-                        )
-                        .on_hover_text(crate::i18n::tr("Reaaliaikainen Screen Transfer Function -automaattivenytys"))
-                        .clicked()
-                    {
-                        self.run_auto_stf();
-                    }
-
-                    let (link_label, hover_tip) = if self.stf_params.linked_channels {
-                        (crate::i18n::tr("🔗 Linkitetty"), crate::i18n::tr("Kanavat linkitetty (raakavärit). Klikkaa neutraloidaksesi taustan."))
+                        );
+                        if ui
+                            .add(lin_btn)
+                            .on_hover_text(crate::i18n::tr("Kuva on lineaarisessa raakatilassa. Klikkaa kytkeäksesi automaattivenytys (Auto-STF)."))
+                            .clicked()
+                        {
+                            self.run_auto_stf();
+                        }
                     } else {
-                        (crate::i18n::tr("🔓 Neutraali tausta"), crate::i18n::tr("Taustan neutralointi aktiivinen. Klikkaa linkittääksesi kanavat."))
-                    };
-                    if ui.button(link_label).on_hover_text(hover_tip).clicked() {
-                        self.stf_params.linked_channels = !self.stf_params.linked_channels;
-                        self.run_auto_stf();
+                        let lin_btn = egui::Button::new(crate::i18n::tr("🟢 Lineaaritila"));
+                        if ui
+                            .add(lin_btn)
+                            .on_hover_text(crate::i18n::tr("Kytke venytys pois ja näytä aito raaka lineaarikuva"))
+                            .clicked()
+                        {
+                            self.stf_params.set_linear();
+                            self.image_counter += 1;
+                            self.status_message = crate::i18n::tr("Näyttötilaksi vaihdettu: Lineaarinen raakatila.").to_string();
+                        }
                     }
 
-                    // Background level quick presets
-                    if ui.button(crate::i18n::tr("🌌 Syvä (0.08)")).on_hover_text(crate::i18n::tr("Syvä avaruustausta (PixInsight-tyyli)")).clicked() {
-                        self.stf_params.target_bg = 0.08;
-                        self.run_auto_stf();
+                    // 2. Mode Selector Dropdown
+                    egui::ComboBox::from_id_salt("top_stretch_mode_combo")
+                        .selected_text(RichText::new(self.stf_params.mode.display_name()).strong())
+                        .width(165.0)
+                        .show_ui(ui, |ui| {
+                            for m in crate::processing::stf::StretchMode::all() {
+                                let label = m.display_name();
+                                if ui.selectable_label(self.stf_params.mode == *m && (!self.stf_params.is_linear() || *m == crate::processing::stf::StretchMode::Linear), label).clicked() {
+                                    self.stf_params.set_mode(*m);
+                                    if *m == crate::processing::stf::StretchMode::AutoStf {
+                                        self.run_auto_stf();
+                                    }
+                                    self.image_counter += 1;
+                                }
+                            }
+                        });
+
+                    // 3. Mode-specific quick controls in top toolbar
+                    if self.stf_params.is_linear() {
+                        ui.add_sized([65.0, 20.0], egui::Slider::new(&mut self.stf_params.linear_exposure_ev, -3.0..=3.0).step_by(0.1).prefix("EV: ").suffix("").trailing_fill(true))
+                            .on_hover_text(crate::i18n::tr("Lineaarinen valotuksen hienosäätö (EV)"));
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::AutoStf {
+                        let (link_label, hover_tip) = if self.stf_params.linked_channels {
+                            (crate::i18n::tr("🔗 Linkitetty"), crate::i18n::tr("Kanavat linkitetty (raakavärit). Klikkaa neutraloidaksesi taustan."))
+                        } else {
+                            (crate::i18n::tr("🔓 Neutraali tausta"), crate::i18n::tr("Taustan neutralointi aktiivinen. Klikkaa linkittääksesi kanavat."))
+                        };
+                        if ui.button(link_label).on_hover_text(hover_tip).clicked() {
+                            self.stf_params.linked_channels = !self.stf_params.linked_channels;
+                            self.run_auto_stf();
+                        }
+
+                        if ui.button(crate::i18n::tr("🌌 Syvä (0.08)")).on_hover_text(crate::i18n::tr("Syvä avaruustausta (PixInsight-tyyli)")).clicked() {
+                            self.stf_params.target_bg = 0.08;
+                            self.run_auto_stf();
+                        }
+                        if ui.button(crate::i18n::tr("🪐 Standardi (0.10)")).on_hover_text(crate::i18n::tr("Normaali avaruustausta (0.10)")).clicked() {
+                            self.stf_params.target_bg = 0.10;
+                            self.run_auto_stf();
+                        }
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::Arcsinh {
+                        ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.arcsinh_stretch, 1.0..=1000.0).logarithmic(true).prefix("S: "))
+                            .on_hover_text(crate::i18n::tr("Arcsinh-venytyskerroin"));
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::Logarithmic {
+                        ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.log_factor, 10.0..=10000.0).logarithmic(true).prefix("Log: "))
+                            .on_hover_text(crate::i18n::tr("Logaritminen kerroin"));
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::Ghs {
+                        ui.add_sized([65.0, 20.0], egui::Slider::new(&mut self.stf_params.ghs_d, 1.0..=50.0).prefix("D: "))
+                            .on_hover_text(crate::i18n::tr("Hyperbolinen venytys (D)"));
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::Root {
+                        ui.add_sized([65.0, 20.0], egui::Slider::new(&mut self.stf_params.gamma, 0.1..=1.0).step_by(0.05).prefix("γ: "))
+                            .on_hover_text(crate::i18n::tr("Gamma-eksponentti"));
                     }
-                    if ui.button(crate::i18n::tr("🪐 Standardi (0.10)")).on_hover_text(crate::i18n::tr("Normaali avaruustausta (0.10)")).clicked() {
-                        self.stf_params.target_bg = 0.10;
-                        self.run_auto_stf();
+
+                    if ui.button("🎚").on_hover_text(crate::i18n::tr("Avaa tarkemmat venytyssäädöt sivupalkkiin")).clicked() {
+                        self.active_tab = ActiveTab::Stf;
                     }
 
                     ui.separator();
@@ -3040,7 +3102,9 @@ impl PhotonForgeApp {
             self.active_image_index = i;
             self.image_counter += 1;
             if let Some(img) = self.active_image() {
-                self.stf_params = StfParameters::compute_auto(img, self.stf_params.linked_channels);
+                if self.stf_params.mode == crate::processing::stf::StretchMode::AutoStf && self.stf_params.enabled {
+                    self.stf_params = StfParameters::compute_auto_with_target(img, self.stf_params.linked_channels, self.stf_params.target_bg);
+                }
             }
         }
 
@@ -3068,89 +3132,212 @@ impl PhotonForgeApp {
 
     fn ui_stf_tab(&mut self, ui: &mut egui::Ui) {
         ui.set_max_width(ui.available_width());
-        ui.heading(crate::i18n::tr("⚡ Näyttövenytys (STF)"));
+        ui.heading(crate::i18n::tr("⚡ Näyttövenytys & Kontrasti (STF)"));
         ui.label(RichText::new(crate::i18n::tr("Reaaliaikainen näyttövenytys muuttamatta alkuperäistä raw-dataa.")).small().color(Color32::from_rgb(160, 180, 210)));
 
         ui.add_space(8.0);
+
+        // 1. Mode selector card
         ui.group(|ui| {
             ui.set_max_width(ui.available_width());
-            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
-            ui.strong(crate::i18n::tr("⚙️ Automaattinen venytys:"));
+            ui.strong(crate::i18n::tr("🎯 Venytysmenetelmä:"));
             ui.add_space(4.0);
-            ui.checkbox(&mut self.stf_params.enabled, crate::i18n::tr("STF käytössä"));
-            ui.checkbox(&mut self.stf_params.linked_channels, crate::i18n::tr("Linkitetyt RGB-kanavat"));
 
-            ui.add_space(4.0);
-            ui.label(crate::i18n::tr("Taustan tavoitetummuus:"));
-            if ui.add(egui::Slider::new(&mut self.stf_params.target_bg, 0.04..=0.25).step_by(0.01).trailing_fill(true)).changed() {
-                self.run_auto_stf();
-            }
-
-            ui.add_space(4.0);
-            ui.label(crate::i18n::tr("Pika-asetukset:"));
-            ui.horizontal_wrapped(|ui| {
-                if ui.button(crate::i18n::tr("🌌 Syvä (0.08)")).on_hover_text(crate::i18n::tr("Syvä avaruus, tumma taivas (0.08)")).clicked() {
-                    self.stf_params.target_bg = 0.08;
-                    self.run_auto_stf();
-                }
-                if ui.button(crate::i18n::tr("🪐 Standardi (0.10)")).on_hover_text(crate::i18n::tr("Normaali tasapainoinen tausta (0.10)")).clicked() {
-                    self.stf_params.target_bg = 0.10;
-                    self.run_auto_stf();
-                }
-                if ui.button(crate::i18n::tr("🔭 Vaalea (0.20)")).on_hover_text(crate::i18n::tr("Vaalea tausta himmeille sumuille (0.20)")).clicked() {
-                    self.stf_params.target_bg = 0.20;
-                    self.run_auto_stf();
-                }
-            });
-
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                if ui.add(egui::Button::new(RichText::new(crate::i18n::tr("⚡ Laske automaattivenytys")).strong()).min_size(Vec2::new(140.0, 24.0))).clicked() {
-                    self.run_auto_stf();
-                }
-                if ui.add(egui::Button::new(crate::i18n::tr("Palauta oletukset")).min_size(Vec2::new(90.0, 24.0))).clicked() {
-                    self.stf_params.channels = [ChannelStf::default(), ChannelStf::default(), ChannelStf::default()];
+            for m in crate::processing::stf::StretchMode::all() {
+                let is_sel = self.stf_params.mode == *m && (!self.stf_params.is_linear() || *m == crate::processing::stf::StretchMode::Linear);
+                let label = m.display_name();
+                if ui.selectable_label(is_sel, label).clicked() {
+                    self.stf_params.set_mode(*m);
+                    if *m == crate::processing::stf::StretchMode::AutoStf {
+                        self.run_auto_stf();
+                    }
                     self.image_counter += 1;
                 }
-            });
+            }
         });
 
         ui.add_space(8.0);
+
+        // 2. Active Mode Controls
         ui.group(|ui| {
             ui.set_max_width(ui.available_width());
             ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
-            ui.strong(crate::i18n::tr("🎚 Manuaaliset säätimet:"));
-            ui.add_space(4.0);
 
-            let ch = &mut self.stf_params.channels[0];
-            let mut changed = false;
+            match self.stf_params.mode {
+                crate::processing::stf::StretchMode::Linear => {
+                    ui.strong(RichText::new("🟢 Lineaarinen tila (Ei venytystä)").color(Color32::from_rgb(100, 255, 150)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Kuva näytetään suorassa lineaarisessa raakatilassa sellaisena kuin se pinottiin. Aito pinoamisen raakadata on usein erittäin tummaa ennen venytystä.")).small().color(Color32::from_rgb(160, 190, 220)));
 
-            ui.label(crate::i18n::tr("Varjot:"));
-            if ui.add(egui::Slider::new(&mut ch.shadows, 0.0..=0.5).step_by(0.001).trailing_fill(true)).changed() {
-                changed = true;
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Lineaarinen valotussäätö (EV):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.linear_exposure_ev, -4.0..=4.0).step_by(0.1).suffix(" EV").trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(8.0);
+                    if ui.add(egui::Button::new(RichText::new(crate::i18n::tr("⚡ Kytke Auto-STF venytys päälle")).strong().color(Color32::from_rgb(255, 215, 0))).min_size(Vec2::new(ui.available_width(), 26.0))).clicked() {
+                        self.run_auto_stf();
+                    }
+                }
+                crate::processing::stf::StretchMode::AutoStf => {
+                    ui.strong(RichText::new("⚡ Auto-STF (Automaattinen MTF)").color(Color32::from_rgb(255, 215, 0)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("PixInsight-standardin mukainen automaattinen taustan ja tähtien venytys.")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    if ui.checkbox(&mut self.stf_params.linked_channels, crate::i18n::tr("Linkitetyt RGB-kanavat (säilyttää värisuhteen)")).changed() {
+                        self.run_auto_stf();
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Taustan tavoitetummuus:"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.target_bg, 0.04..=0.25).step_by(0.01).trailing_fill(true)).changed() {
+                        self.run_auto_stf();
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Pika-asetukset:"));
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(crate::i18n::tr("🌌 Syvä (0.08)")).on_hover_text(crate::i18n::tr("Syvä avaruus, tumma taivas (0.08)")).clicked() {
+                            self.stf_params.target_bg = 0.08;
+                            self.run_auto_stf();
+                        }
+                        if ui.button(crate::i18n::tr("🪐 Standardi (0.10)")).on_hover_text(crate::i18n::tr("Normaali tasapainoinen tausta (0.10)")).clicked() {
+                            self.stf_params.target_bg = 0.10;
+                            self.run_auto_stf();
+                        }
+                        if ui.button(crate::i18n::tr("🔭 Vaalea (0.20)")).on_hover_text(crate::i18n::tr("Vaalea tausta himmeille sumuille (0.20)")).clicked() {
+                            self.stf_params.target_bg = 0.20;
+                            self.run_auto_stf();
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.add(egui::Button::new(RichText::new(crate::i18n::tr("⚡ Laske automaattivenytys")).strong()).min_size(Vec2::new(140.0, 24.0))).clicked() {
+                            self.run_auto_stf();
+                        }
+                        if ui.add(egui::Button::new(crate::i18n::tr("🟢 Palauta lineaariseksi")).min_size(Vec2::new(120.0, 24.0))).clicked() {
+                            self.stf_params.set_linear();
+                            self.image_counter += 1;
+                        }
+                    });
+                }
+                crate::processing::stf::StretchMode::ManualMtf => {
+                    ui.strong(RichText::new("🎚 Manuaalinen MTF (Midtones Transfer Function)").color(Color32::from_rgb(180, 210, 255)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Säädä varjoja, keskisävyjä ja valkopistettä manuaalisesti.")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    let ch = &mut self.stf_params.channels[0];
+                    let mut changed = false;
+
+                    ui.label(crate::i18n::tr("Varjot (Shadows / Mustapiste):"));
+                    if ui.add(egui::Slider::new(&mut ch.shadows, 0.0..=0.5).step_by(0.001).trailing_fill(true)).changed() {
+                        changed = true;
+                    }
+
+                    ui.label(crate::i18n::tr("Keskisävyt (Midtones):"));
+                    if ui.add(egui::Slider::new(&mut ch.midtones, 0.001..=0.999).step_by(0.001).logarithmic(true).trailing_fill(true)).changed() {
+                        changed = true;
+                    }
+
+                    ui.label(crate::i18n::tr("Kirkkaat sävyt (Highlights / Valkopiste):"));
+                    if ui.add(egui::Slider::new(&mut ch.highlights, 0.5..=1.0).step_by(0.001).trailing_fill(true)).changed() {
+                        changed = true;
+                    }
+
+                    if changed {
+                        let sync_ch = *ch;
+                        self.stf_params.channels = [sync_ch, sync_ch, sync_ch];
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(6.0);
+                    if ui.button(crate::i18n::tr("📥 Kopioi Auto-STF:n arvot pohjaksi")).clicked() {
+                        if let Some(img) = self.active_image() {
+                            let auto = StfParameters::compute_auto_with_target(img, self.stf_params.linked_channels, self.stf_params.target_bg);
+                            self.stf_params.channels = auto.channels;
+                            self.image_counter += 1;
+                        }
+                    }
+                }
+                crate::processing::stf::StretchMode::Arcsinh => {
+                    ui.strong(RichText::new("🌈 Arcsinh-venytys (Lupton/Siril)").color(Color32::from_rgb(255, 180, 220)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Säilyttää tähtien ja kaasusumujen kirkkaat värit ilman värikylläisyyden haalistumista tai valkoiseksi palamista.")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Venytyskerroin (Stretch Factor):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.arcsinh_stretch, 1.0..=1000.0).logarithmic(true).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Mustapiste (Black Point):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.arcsinh_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+                }
+                crate::processing::stf::StretchMode::Logarithmic => {
+                    ui.strong(RichText::new("📐 Logaritminen venytys (HDR)").color(Color32::from_rgb(150, 220, 255)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Sopii kohteille, joissa on valtava dynamiikkaero kirkkaan ytimen ja himmeiden sumujen välillä (esim. M42 Trapetsi, M31 ydin).")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Log-kerroin:"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.log_factor, 10.0..=10000.0).logarithmic(true).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Mustapiste:"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.log_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+                }
+                crate::processing::stf::StretchMode::Ghs => {
+                    ui.strong(RichText::new("📈 Hyperbolinen venytys (GHS)").color(Color32::from_rgb(255, 200, 130)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Generalized Hyperbolic Stretch kohdistaa kontrastin juuri halutulle kirkkaustasolle.")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Venytysintensiteetti (D):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.ghs_d, 1.0..=50.0).step_by(0.5).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Symmetriapiste / Taustataso (b):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.ghs_b, 0.0..=0.3).step_by(0.005).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+                }
+                crate::processing::stf::StretchMode::Root => {
+                    ui.strong(RichText::new("🌿 Juuri / Gamma -venytys").color(Color32::from_rgb(180, 255, 180)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Pehmeä juurivenytys potenssifunktiolla (0.5 = neliöjuuri, 0.33 = kuutiojuuri).")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Gamma-eksponentti (γ):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.gamma, 0.1..=1.0).step_by(0.05).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Mustapiste:"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.gamma_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+                }
             }
 
-            ui.label(crate::i18n::tr("Keskisävyt:"));
-            if ui.add(egui::Slider::new(&mut ch.midtones, 0.001..=0.999).step_by(0.001).logarithmic(true).trailing_fill(true)).changed() {
-                changed = true;
-            }
-
-            ui.label(crate::i18n::tr("Kirkkaat sävyt:"));
-            if ui.add(egui::Slider::new(&mut ch.highlights, 0.5..=1.0).step_by(0.001).trailing_fill(true)).changed() {
-                changed = true;
-            }
-
-            if changed {
-                let sync_ch = *ch;
-                self.stf_params.channels = [sync_ch, sync_ch, sync_ch];
-                self.image_counter += 1;
-            }
-
-            ui.add_space(6.0);
+            ui.add_space(10.0);
             let btn_w = ui.available_width();
             if ui.add_sized(
-                [btn_w, 26.0],
-                egui::Button::new(RichText::new(crate::i18n::tr("💾 Tee venytyksestä pysyvä (Histogrammi)")).strong().color(Color32::from_rgb(100, 220, 255))),
+                [btn_w, 28.0],
+                egui::Button::new(RichText::new(crate::i18n::tr("💾 Tee venytyksestä pysyvä (Histogrammi-tallennus)")).strong().color(Color32::from_rgb(100, 220, 255))),
             ).clicked() {
                 self.apply_permanent_stf();
             }
@@ -3279,6 +3466,19 @@ impl PhotonForgeApp {
                 ui.radio_value(&mut self.stacking_config.drizzle_scale, 2, crate::i18n::tr("2x Drizzle (Kaksinkertainen resoluutio)"));
             });
             ui.label(RichText::new(crate::i18n::tr("2x Drizzle muodostaa alipikselisiirtymistä kaksinkertaisen resoluution ja pyöreämmät tähdet.")).small().color(Color32::from_rgb(140, 170, 200)));
+        });
+
+        ui.add_space(8.0);
+        ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
+            ui.strong(crate::i18n::tr("⚡ Näyttötila pinoamisen jälkeen:"));
+            ui.add_space(2.0);
+            ui.checkbox(&mut self.stacking_config.auto_stretch_after_stack, crate::i18n::tr("Automaattinen venytys (Auto-STF) pinoamisen jälkeen"));
+            if self.stacking_config.auto_stretch_after_stack {
+                ui.label(RichText::new(crate::i18n::tr("Pinottu kuva venytetään heti näytölle Auto-STF:llä.")).small().color(Color32::from_rgb(255, 215, 0)));
+            } else {
+                ui.label(RichText::new(crate::i18n::tr("Oletus: Pinottu kuva avataan puhtaassa lineaarisessa raakatilassa.")).small().color(Color32::from_rgb(100, 255, 150)));
+            }
         });
 
         ui.add_space(16.0);
