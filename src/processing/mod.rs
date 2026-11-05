@@ -9,6 +9,7 @@ pub mod mosaic_stitcher;
 pub mod pcc;
 pub mod plate_solve;
 pub mod scnr;
+pub mod sharpening;
 pub mod stacking;
 pub mod star_reduction;
 pub mod stf;
@@ -38,5 +39,7 @@ pub use plate_solve::{
 };
 #[allow(unused_imports)]
 pub use star_reduction::StarReduction;
+#[allow(unused_imports)]
+pub use sharpening::{ImageSharpening, SharpeningConfig, SharpeningMethod};
 #[allow(unused_imports)]
 pub use syqon::{SyQonEngine, SyQonModel, SyQonProgress, SyQonResult, SyQonTask};

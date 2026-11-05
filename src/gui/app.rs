@@ -7,6 +7,7 @@ use crate::processing::histogram::HistogramProcessor;
 use crate::processing::scnr::Scnr;
 use crate::processing::stacking::{Stacker, StackingConfig, StackingMethod, StackingProgress};
 use crate::processing::star_reduction::StarReduction;
+use crate::processing::sharpening::{ImageSharpening, SharpeningConfig, SharpeningMethod};
 use crate::processing::channel_combination::{AstroFilter, ChannelCombiner, ChannelCombinerConfig};
 use crate::processing::curves::{CurvesChannel, CurvesSet, SplineCurve};
 use crate::processing::live_stack::LiveStackEngine;
@@ -135,6 +136,7 @@ pub struct PhotonForgeApp {
     selected_bayer_pattern: BayerPattern,
     star_reduction_amount: f32,
     star_reduction_radius: usize,
+    sharpening_config: SharpeningConfig,
 
     // Curves
     curves: CurvesSet,
@@ -292,6 +294,7 @@ impl Default for PhotonForgeApp {
             selected_bayer_pattern: BayerPattern::Grbg,
             star_reduction_amount: 0.50,
             star_reduction_radius: 1,
+            sharpening_config: SharpeningConfig::default(),
 
             curves: CurvesSet::default(),
             curves_channel: CurvesChannel::Rgb,
@@ -1344,6 +1347,31 @@ impl PhotonForgeApp {
             }
             Err(e) => {
                 self.status_message = format!("Tähtien pienennysvirhe: {}", e);
+            }
+        }
+    }
+
+    fn run_sharpening(&mut self) {
+        let Some(img) = self.active_image_arc() else { return };
+        match ImageSharpening::sharpen(&img, &self.sharpening_config) {
+            Ok(mut sharpened) => {
+                self.push_undo(crate::i18n::tr("Kuvan tarkennus"));
+                let base = img.metadata.file_name.strip_suffix(".fits")
+                    .or_else(|| img.metadata.file_name.strip_suffix(".fit"))
+                    .or_else(|| img.metadata.file_name.strip_suffix(".xisf"))
+                    .unwrap_or(&img.metadata.file_name);
+                sharpened.metadata.file_name = format!("{}_Sharpened.fits", base);
+                self.images.push(Arc::new(sharpened));
+                self.active_image_index = self.images.len() - 1;
+                self.image_counter += 1;
+                let method_name = match self.sharpening_config.method {
+                    SharpeningMethod::UnsharpMask => "Unsharp Mask (USM)",
+                    SharpeningMethod::Wavelet => "Wavelet (À Trous)",
+                };
+                self.status_message = format!("Kuvan tarkennus & terävöitys suoritettu onnistuneesti ({}).", method_name);
+            }
+            Err(e) => {
+                self.status_message = format!("Tarkennusvirhe: {}", e);
             }
         }
     }
@@ -4926,6 +4954,91 @@ impl PhotonForgeApp {
             let bw = ui.available_width();
             if ui.add_sized([bw, 24.0], egui::Button::new(crate::i18n::tr("✨ Pienennä tähtiä"))).clicked() {
                 self.run_star_reduction();
+            }
+        });
+
+        ui.add_space(8.0);
+
+        // Image Sharpening & Detail Enhancement
+        ui.group(|ui| {
+            ui.set_max_width(ui.available_width());
+            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
+            ui.strong(crate::i18n::tr("🔍 Kuvan tarkennus & terävöitys (Sharpening)"));
+            ui.label(crate::i18n::tr("Korostaa sumujen hienosäikeitä, galaksien pölykaistoja tai kuukraattereita ilman kohinan ja tähtihalojen korostumista."));
+
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(crate::i18n::tr("Pika-asetukset:"));
+                if ui.small_button(crate::i18n::tr("🌙 Kuu/Planeetat")).clicked() {
+                    self.sharpening_config.method = SharpeningMethod::Wavelet;
+                    self.sharpening_config.wavelet_scale1 = 1.8;
+                    self.sharpening_config.wavelet_scale2 = 2.0;
+                    self.sharpening_config.wavelet_scale3 = 1.2;
+                    self.sharpening_config.wavelet_noise_threshold = 0.002;
+                    self.sharpening_config.luminance_only = true;
+                }
+                if ui.small_button(crate::i18n::tr("🌀 Galaksit")).clicked() {
+                    self.sharpening_config.method = SharpeningMethod::Wavelet;
+                    self.sharpening_config.wavelet_scale1 = 1.2;
+                    self.sharpening_config.wavelet_scale2 = 1.6;
+                    self.sharpening_config.wavelet_scale3 = 1.3;
+                    self.sharpening_config.wavelet_noise_threshold = 0.003;
+                    self.sharpening_config.luminance_only = true;
+                }
+                if ui.small_button(crate::i18n::tr("🌌 Kaasusumut")).clicked() {
+                    self.sharpening_config.method = SharpeningMethod::Wavelet;
+                    self.sharpening_config.wavelet_scale1 = 1.1;
+                    self.sharpening_config.wavelet_scale2 = 1.4;
+                    self.sharpening_config.wavelet_scale3 = 1.6;
+                    self.sharpening_config.wavelet_noise_threshold = 0.004;
+                    self.sharpening_config.luminance_only = true;
+                }
+                if ui.small_button(crate::i18n::tr("🔍 Kevyt USM")).clicked() {
+                    self.sharpening_config.method = SharpeningMethod::UnsharpMask;
+                    self.sharpening_config.usm_radius = 1.2;
+                    self.sharpening_config.usm_amount = 0.8;
+                    self.sharpening_config.usm_threshold = 0.004;
+                    self.sharpening_config.luminance_only = true;
+                }
+            });
+
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(crate::i18n::tr("Menetelmä:"));
+                ui.radio_value(&mut self.sharpening_config.method, SharpeningMethod::Wavelet, crate::i18n::tr("Wavelet (À Trous)"));
+                ui.radio_value(&mut self.sharpening_config.method, SharpeningMethod::UnsharpMask, crate::i18n::tr("Unsharp Mask (USM)"));
+            });
+
+            match self.sharpening_config.method {
+                SharpeningMethod::Wavelet => {
+                    ui.label(RichText::new(crate::i18n::tr("Hienot yksityiskohdat (Scale 1: 1 px):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.wavelet_scale1, 0.0..=3.0).step_by(0.05).trailing_fill(true));
+                    ui.label(RichText::new(crate::i18n::tr("Keskikokoiset rakenteet (Scale 2: 2 px):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.wavelet_scale2, 0.0..=3.0).step_by(0.05).trailing_fill(true));
+                    ui.label(RichText::new(crate::i18n::tr("Laajat säikeet (Scale 3: 4 px):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.wavelet_scale3, 0.0..=3.0).step_by(0.05).trailing_fill(true));
+                    ui.label(RichText::new(crate::i18n::tr("Taustan kohinasuojaus:")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.wavelet_noise_threshold, 0.0..=0.02).step_by(0.001).trailing_fill(true));
+                }
+                SharpeningMethod::UnsharpMask => {
+                    ui.label(RichText::new(crate::i18n::tr("Tarkennussäde (Radius σ):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.usm_radius, 0.5..=6.0).step_by(0.1).suffix(" px").trailing_fill(true));
+                    ui.label(RichText::new(crate::i18n::tr("Voimakkuus (Amount):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.usm_amount, 0.1..=3.0).step_by(0.05).trailing_fill(true));
+                    ui.label(RichText::new(crate::i18n::tr("Kohinakynnys (Threshold):")).small());
+                    ui.add(egui::Slider::new(&mut self.sharpening_config.usm_threshold, 0.0..=0.03).step_by(0.001).trailing_fill(true));
+                }
+            }
+
+            ui.add_space(2.0);
+            ui.checkbox(&mut self.sharpening_config.luminance_only, crate::i18n::tr("🎨 Vain luminanssi (Säilyttää värit puhtaina)"));
+
+            ui.label(RichText::new(crate::i18n::tr("Sekoitussuhde (Blend):")).small());
+            ui.add(egui::Slider::new(&mut self.sharpening_config.blend_amount, 0.1..=1.0).step_by(0.05).trailing_fill(true));
+
+            let bw = ui.available_width();
+            if ui.add_sized([bw, 26.0], egui::Button::new(RichText::new(crate::i18n::tr("🔍 Suorita kuvan tarkennus")).color(Color32::from_rgb(100, 230, 255)).strong())).clicked() {
+                self.run_sharpening();
             }
         });
     }

@@ -1779,6 +1779,64 @@ fn test_stretch_modes_and_linear_default_after_stacking() {
     assert!(perm_stretched.data[0] > 0.05); // Data itself is now stretched
 }
 
+#[test]
+fn test_image_sharpening_usm_and_wavelet() {
+    use photon_forge::core::image::AstroImage;
+    use photon_forge::processing::sharpening::{ImageSharpening, SharpeningConfig, SharpeningMethod};
+
+    let mut img = AstroImage::new_rgb(100, 100, 0.05);
+    let center_x = 50usize;
+    let center_y = 50usize;
+    for y in 40..60 {
+        for x in 40..60 {
+            let dx = (x as f32) - 50.0;
+            let dy = (y as f32) - 50.0;
+            let dist_sq = dx * dx + dy * dy;
+            let val = 0.05 + 0.6 * (-dist_sq / 12.0).exp();
+            let px = img.get_pixel_mut(x, y);
+            px[0] = val;         // Red
+            px[1] = val * 0.5;   // Green
+            px[2] = val * 0.2;   // Blue
+        }
+    }
+
+    let orig_center = img.get_pixel(center_x, center_y)[0];
+    let orig_wing = img.get_pixel(center_x + 3, center_y)[0];
+    let orig_ratio = orig_center / orig_wing;
+
+    // 1. Test Unsharp Mask
+    let mut usm_cfg = SharpeningConfig::default();
+    usm_cfg.method = SharpeningMethod::UnsharpMask;
+    usm_cfg.usm_radius = 2.0;
+    usm_cfg.usm_amount = 1.5;
+    usm_cfg.usm_threshold = 0.001;
+    usm_cfg.luminance_only = true;
+
+    let usm_img = ImageSharpening::sharpen(&img, &usm_cfg).expect("USM sharpening should succeed");
+    let usm_center = usm_img.get_pixel(center_x, center_y)[0];
+    let usm_wing = usm_img.get_pixel(center_x + 3, center_y)[0];
+    let usm_ratio = usm_center / usm_wing;
+    assert!(usm_ratio > orig_ratio, "USM sharpening should increase center-to-wing star contrast");
+
+    // Check chromaticity preservation (Luminance-only mode)
+    let px = usm_img.get_pixel(center_x, center_y);
+    let r_ratio = px[1] / px[0];
+    assert!((r_ratio - 0.5).abs() < 0.05, "Luminance-only sharpening must preserve color ratios");
+
+    // 2. Test Multiscale Wavelet Sharpening
+    let mut wav_cfg = SharpeningConfig::default();
+    wav_cfg.method = SharpeningMethod::Wavelet;
+    wav_cfg.wavelet_scale1 = 1.5;
+    wav_cfg.wavelet_scale2 = 1.8;
+    wav_cfg.wavelet_scale3 = 1.2;
+    wav_cfg.wavelet_noise_threshold = 0.002;
+    wav_cfg.luminance_only = true;
+
+    let wav_img = ImageSharpening::sharpen(&img, &wav_cfg).expect("Wavelet sharpening should succeed");
+    let wav_center = wav_img.get_pixel(center_x, center_y)[0];
+    assert!(wav_center > orig_center, "Wavelet detail boost should increase peak sharpness");
+}
+
 
 
 
