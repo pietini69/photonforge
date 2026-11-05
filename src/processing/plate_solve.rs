@@ -933,12 +933,13 @@ impl AstrometryNetSolver {
         let mut job_id: Option<u64> = None;
 
         for attempt in 1..=45 {
-            std::thread::sleep(Duration::from_millis(2000));
-
-            if let Some(c) = &cancel {
-                if c.load(Ordering::Relaxed) {
-                    return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+            for _ in 0..20 {
+                if let Some(c) = &cancel {
+                    if c.load(Ordering::Relaxed) {
+                        return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+                    }
                 }
+                std::thread::sleep(Duration::from_millis(100));
             }
 
             if let Some(cb) = &on_status {
@@ -970,12 +971,13 @@ impl AstrometryNetSolver {
         let mut solved = false;
 
         for attempt in 1..=60 {
-            std::thread::sleep(Duration::from_millis(2000));
-
-            if let Some(c) = &cancel {
-                if c.load(Ordering::Relaxed) {
-                    return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+            for _ in 0..20 {
+                if let Some(c) = &cancel {
+                    if c.load(Ordering::Relaxed) {
+                        return Err("Käyttäjä keskeytti ratkaisun.".to_string());
+                    }
                 }
+                std::thread::sleep(Duration::from_millis(100));
             }
 
             if let Some(cb) = &on_status {

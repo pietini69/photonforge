@@ -1147,6 +1147,9 @@ impl PhotonForgeApp {
             return;
         }
 
+        // Mark this image as handled to prevent GUI render loops from re-triggering solving
+        self.wcs_solved_image_key = Some((self.active_image_index, img.width, img.height));
+
         let fallback = if let Some(idx) = self.wcs_manual_target_idx {
             self.sky_catalog
                 .get(idx)
@@ -1200,10 +1203,20 @@ impl PhotonForgeApp {
         self.is_wcs_online_solving = false;
         self.wcs_online_rx = None;
         self.wcs_online_cancel = None;
+        if self.wcs_solution.is_none() {
+            self.annotation_config.enabled = false;
+        }
+        if let Some(img) = self.active_image() {
+            self.wcs_solved_image_key = Some((self.active_image_index, img.width, img.height));
+        }
         self.status_message = crate::i18n::tr("Astrometry.net -ratkaisu peruutettu.").to_string();
     }
 
     fn toggle_wcs_annotations(&mut self) {
+        if self.is_wcs_online_solving {
+            self.cancel_wcs_online_solve();
+            return;
+        }
         self.annotation_config.enabled = !self.annotation_config.enabled;
         if self.annotation_config.enabled {
             self.solve_active_image_wcs();
@@ -1745,7 +1758,14 @@ impl eframe::App for PhotonForgeApp {
                             self.annotation_config.enabled = true;
                         }
                         Err(e) => {
-                            self.status_message = format!("Astrometry.net -virhe: {}", e);
+                            if let Some(img) = self.active_image() {
+                                self.wcs_solved_image_key = Some((self.active_image_index, img.width, img.height));
+                            }
+                            if e.contains("keskeytti") || e.contains("cancel") {
+                                self.status_message = crate::i18n::tr("Astrometry.net -ratkaisu peruutettu.").to_string();
+                            } else {
+                                self.status_message = format!("Astrometry.net -virhe: {}", e);
+                            }
                         }
                     }
                 }
@@ -2270,7 +2290,7 @@ impl eframe::App for PhotonForgeApp {
                             if self.images.is_empty() {
                                 self.ui_empty_workspace(ui);
                             } else {
-                                if self.annotation_config.enabled {
+                                if self.annotation_config.enabled && !self.is_wcs_online_solving {
                                     let needs_solve = self
                                         .images
                                         .get(self.active_image_index)
@@ -2280,7 +2300,7 @@ impl eframe::App for PhotonForgeApp {
                                         })
                                         .unwrap_or(false);
                                     if needs_solve {
-                                        self.solve_active_image_wcs();
+                                        self.solve_active_image_wcs_local();
                                     }
                                 }
                                 let img = self.images.get(self.active_image_index).map(|arc| arc.as_ref());
@@ -2315,7 +2335,7 @@ impl eframe::App for PhotonForgeApp {
                 } else if self.images.is_empty() {
                     self.ui_empty_workspace(ui);
                 } else {
-                    if self.annotation_config.enabled {
+                    if self.annotation_config.enabled && !self.is_wcs_online_solving {
                         let needs_solve = self
                             .images
                             .get(self.active_image_index)
@@ -2325,7 +2345,7 @@ impl eframe::App for PhotonForgeApp {
                             })
                             .unwrap_or(false);
                         if needs_solve {
-                            self.solve_active_image_wcs();
+                            self.solve_active_image_wcs_local();
                         }
                     }
                     let img = self.images.get(self.active_image_index).map(|arc| arc.as_ref());

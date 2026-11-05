@@ -1662,6 +1662,24 @@ fn test_astrometry_net_image_preparation_and_config() {
 }
 
 #[test]
+fn test_astrometry_net_cancellation() {
+    use photon_forge::core::image::AstroImage;
+    use photon_forge::processing::plate_solve::{AstrometryConfig, AstrometryNetSolver};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    let img = AstroImage::new_rgb(400, 300, 0.02);
+    let mut cfg = AstrometryConfig::default();
+    cfg.api_key = "dummy_key".to_string();
+
+    let cancel = Arc::new(AtomicBool::new(true)); // Already canceled
+    let result = AstrometryNetSolver::solve_online(&img, &cfg, &[], None, Some(cancel), None);
+    assert!(result.is_err(), "Pre-canceled solve should return an error");
+    let err = result.unwrap_err();
+    assert!(err.contains("keskeytti") || err.contains("cancel"), "Error should report cancellation, got: {}", err);
+}
+
+#[test]
 fn test_stretch_modes_and_linear_default_after_stacking() {
     use photon_forge::core::image::AstroImage;
     use photon_forge::processing::histogram::HistogramProcessor;
