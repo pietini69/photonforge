@@ -11,7 +11,7 @@ pub enum StretchMode {
     ManualMtf,
     /// Color-preserving Arcsinh stretch (Lupton/Siril algorithm)
     Arcsinh,
-    /// Riccardo Paterniti's VeraLux HyperMetric Stretch (HMS: Photometric Hyperbolic Stretch & True Color vector preservation)
+    /// HyperMetric Stretch (HMS: Photometric Hyperbolic Stretch & True Color vector preservation)
     HyperMetric,
     /// Logarithmic stretch (for high dynamic range nebula/galaxy cores)
     Logarithmic,
@@ -41,7 +41,7 @@ impl StretchMode {
             StretchMode::AutoStf => "⚡ Auto-STF (Automaatti)",
             StretchMode::ManualMtf => "🎚 Manuaalinen MTF",
             StretchMode::Arcsinh => "🌈 Arcsinh (Värit säilyttävä)",
-            StretchMode::HyperMetric => "✨ VeraLux HyperMetric (HMS)",
+            StretchMode::HyperMetric => "✨ HyperMetric Stretch (HMS)",
             StretchMode::Logarithmic => "📐 Logaritminen (HDR)",
             StretchMode::Ghs => "📈 Hyperbolinen (GHS)",
             StretchMode::Root => "🌿 Juuri (Gamma)",
@@ -94,7 +94,7 @@ pub struct StfParameters {
     pub arcsinh_stretch: f32, // 1.0 .. 1000.0, default 100.0
     pub arcsinh_black: f32,   // 0.0 .. 0.2, default 0.0
 
-    // VeraLux HyperMetric Stretch (HMS) parameters
+    // HyperMetric Stretch (HMS) parameters
     pub hms_d: f32,          // Stretch Intensity D: 1.0 .. 500.0, default 40.0
     pub hms_b: f32,          // Softening / Linearity b: 0.001 .. 0.5, default 0.05
     pub hms_sp: f32,         // Shadow Point SP: 0.0 .. 0.2, default 0.0

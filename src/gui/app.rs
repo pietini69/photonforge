@@ -1978,7 +1978,7 @@ impl eframe::App for PhotonForgeApp {
                             .on_hover_text(crate::i18n::tr("Arcsinh-venytyskerroin"));
                     } else if self.stf_params.mode == crate::processing::stf::StretchMode::HyperMetric {
                         ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.hms_d, 1.0..=500.0).logarithmic(true).prefix("D: "))
-                            .on_hover_text(crate::i18n::tr("VeraLux HyperMetric venytyskerroin (D)"));
+                            .on_hover_text(crate::i18n::tr("HyperMetric-venytyskerroin (D)"));
                         ui.add_sized([65.0, 20.0], egui::Slider::new(&mut self.stf_params.hms_color_grip, 0.5..=2.5).step_by(0.1).prefix("Väri: "))
                             .on_hover_text(crate::i18n::tr("Vektorivärien vahvistus / saturaatio"));
                     } else if self.stf_params.mode == crate::processing::stf::StretchMode::Logarithmic {
@@ -3278,9 +3278,9 @@ impl PhotonForgeApp {
                     }
                 }
                 crate::processing::stf::StretchMode::HyperMetric => {
-                    ui.strong(RichText::new("✨ VeraLux HyperMetric Stretch (HMS)").color(Color32::from_rgb(180, 220, 255)));
+                    ui.strong(RichText::new("✨ HyperMetric Stretch (HMS)").color(Color32::from_rgb(180, 220, 255)));
                     ui.add_space(4.0);
-                    ui.label(RichText::new(crate::i18n::tr("Riccardo Paternitin VeraLux HMS: fotometrinen hyperbolinen venytys, joka irrottaa luminanssigeometrian kromaattisista vektoreista säilyttäen tähtien ja sumujen todellisen värispektrin ilman puhkipalamista.")).small().color(Color32::from_rgb(160, 190, 220)));
+                    ui.label(RichText::new(crate::i18n::tr("Fotometrinen hyperbolinen venytys (HMS), joka irrottaa luminanssigeometrian kromaattisista vektoreista säilyttäen tähtien ja sumujen todellisen värispektrin ilman puhkipalamista.")).small().color(Color32::from_rgb(160, 190, 220)));
 
                     ui.add_space(6.0);
                     ui.label(crate::i18n::tr("Venytyskerroin (Stretch Intensity D):"));

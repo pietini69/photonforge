@@ -1757,7 +1757,7 @@ fn test_stretch_modes_and_linear_default_after_stacking() {
     let root_bytes = img.to_rgb8_with_stf(&stf);
     assert!(!root_bytes.is_empty());
 
-    // 8b. Test VeraLux HyperMetric Stretch (HMS)
+    // 8b. Test HyperMetric Stretch (HMS)
     stf.set_mode(StretchMode::HyperMetric);
     stf.hms_d = 40.0;
     stf.hms_b = 0.05;
