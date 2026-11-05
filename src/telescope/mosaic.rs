@@ -513,6 +513,7 @@ impl MosaicPlan {
                 ra_hours: p.ra_hours,
                 dec_deg: p.dec_deg,
                 duration_minutes: p.exposure_mins,
+                sub_exposure_secs: 10,
                 min_altitude_deg: 20.0,
                 use_lp_filter: p.use_lp,
                 status: crate::telescope::sequencer::JobStatus::Pending,

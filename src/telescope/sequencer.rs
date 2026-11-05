@@ -79,6 +79,10 @@ impl Default for ConnectionGuardConfig {
     }
 }
 
+fn default_target_sub_exposure() -> u32 {
+    10
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SequenceTarget {
     pub id: usize,
@@ -87,6 +91,8 @@ pub struct SequenceTarget {
     pub ra_hours: f64,
     pub dec_deg: f64,
     pub duration_minutes: u32,
+    #[serde(default = "default_target_sub_exposure")]
+    pub sub_exposure_secs: u32,
     pub min_altitude_deg: f64,
     pub use_lp_filter: bool,
     pub status: JobStatus,
@@ -102,6 +108,8 @@ pub struct SequencerState {
     pub autofocus_config: AutoFocusConfig,
     pub dither_config: DitherConfig,
     pub connection_guard: ConnectionGuardConfig,
+    #[allow(dead_code)]
+    pub default_sub_exposure_secs: u32,
     pub af_runs_count: u32,
     pub dithers_count: u32,
     pub reconnect_events_count: u32,
@@ -121,6 +129,7 @@ impl Default for SequencerState {
             autofocus_config: AutoFocusConfig::default(),
             dither_config: DitherConfig::default(),
             connection_guard: ConnectionGuardConfig::default(),
+            default_sub_exposure_secs: 10,
             af_runs_count: 0,
             dithers_count: 0,
             reconnect_events_count: 0,
@@ -134,6 +143,7 @@ impl Default for SequencerState {
                     ra_hours: 3.79,
                     dec_deg: 24.11,
                     duration_minutes: 60,
+                    sub_exposure_secs: 10,
                     min_altitude_deg: 25.0,
                     use_lp_filter: false,
                     status: JobStatus::Pending,
@@ -146,6 +156,7 @@ impl Default for SequencerState {
                     ra_hours: 5.59,
                     dec_deg: -5.39,
                     duration_minutes: 90,
+                    sub_exposure_secs: 10,
                     min_altitude_deg: 20.0,
                     use_lp_filter: true,
                     status: JobStatus::Pending,
@@ -178,7 +189,19 @@ impl NightSequencer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_target(&self, obj: &SkyObject, duration_minutes: u32, use_lp: bool) {
+        let def_exp = self.state.lock().unwrap().default_sub_exposure_secs;
+        self.add_target_with_exposure(obj, duration_minutes, def_exp, use_lp);
+    }
+
+    pub fn add_target_with_exposure(
+        &self,
+        obj: &SkyObject,
+        duration_minutes: u32,
+        sub_exposure_secs: u32,
+        use_lp: bool,
+    ) {
         let mut s = self.state.lock().unwrap();
         let next_id = s.targets.len() + 1;
         let name = if obj.id == obj.name || obj.name.is_empty() {
@@ -196,16 +219,18 @@ impl NightSequencer {
             ra_hours: obj.ra_hours,
             dec_deg: obj.dec_deg,
             duration_minutes,
+            sub_exposure_secs: sub_exposure_secs.clamp(1, 300),
             min_altitude_deg: 20.0,
             use_lp_filter: use_lp,
             status: JobStatus::Pending,
             elapsed_seconds: 0,
         });
         s.logs.push(format!(
-            "[{}] Lisätty sekvenssiin: {} ({} min, {})",
+            "[{}] Lisätty sekvenssiin: {} ({} min, {}s valotus, {})",
             Utc::now().format("%H:%M:%S"),
             obj.id,
             duration_minutes,
+            sub_exposure_secs,
             if use_lp { "LP-suodatin" } else { "Normaali" }
         ));
     }
@@ -518,13 +543,16 @@ impl NightSequencer {
                     break;
                 }
 
-                // 5. Start Stacking
-                {
+                // 5. Start Stacking with Target-specific Sub-exposure Time
+                let target_sub_exp = {
                     let mut s = state_clone.lock().unwrap();
+                    let exp = s.targets[i].sub_exposure_secs.max(1);
                     s.targets[i].status = JobStatus::Stacking;
-                    s.current_step_description = format!("Valottaa ja pinoaa kohdetta {} (kesto {} min)...", target_name, duration_mins);
-                    s.logs.push(format!("[{}] ▶ Aloitetaan pinoaminen: {} ({} min)", Utc::now().format("%H:%M:%S"), target_name, duration_mins));
-                }
+                    s.current_step_description = format!("Valottaa ja pinoaa kohdetta {} ({}s osavalotuksin, kesto {} min)...", target_name, exp, duration_mins);
+                    s.logs.push(format!("[{}] ▶ Aloitetaan pinoaminen: {} ({} min, {}s osavalotus)", Utc::now().format("%H:%M:%S"), target_name, duration_mins, exp));
+                    exp
+                };
+                client.set_exposure_time(target_sub_exp);
                 client.start_stacking();
 
                 // 6. Resilient Active Stacking Loop (handles periodic AF, dithering, and connection drops)

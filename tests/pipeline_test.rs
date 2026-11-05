@@ -1501,7 +1501,7 @@ fn test_night_automation_dither_autofocus_and_reconnect() {
 
     let client = SeestarClient::new();
     client.set_simulation(true);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(Duration::from_millis(150));
     let telem0 = client.get_telemetry();
     assert!(telem0.is_simulation);
     assert!(telem0.auto_reconnect_enabled);

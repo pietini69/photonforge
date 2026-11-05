@@ -109,6 +109,7 @@ pub struct SeestarTelemetry {
     pub last_focus_time: Option<String>,
     pub dither_config: DitherConfig,
     pub dither_count: u32,
+    pub exposure_seconds: u32,
 }
 
 impl Default for SeestarTelemetry {
@@ -142,6 +143,7 @@ impl Default for SeestarTelemetry {
             last_focus_time: None,
             dither_config: DitherConfig::default(),
             dither_count: 0,
+            exposure_seconds: 10,
         }
     }
 }
@@ -176,6 +178,7 @@ enum SeestarCommand {
         settle_secs: u32,
     },
     SetAutoReconnect(bool),
+    SetExposure(u32),
 }
 
 fn alpaca_put(
@@ -255,6 +258,7 @@ impl SeestarClient {
         default_telem.ip_address = ip;
         default_telem.is_simulation = cfg.is_simulation;
         default_telem.auto_reconnect_enabled = cfg.auto_reconnect;
+        default_telem.exposure_seconds = cfg.exposure_seconds.clamp(1, 300);
         if cfg.is_simulation {
             default_telem.connected = true;
             default_telem.state = SeestarState::Idle;
@@ -531,7 +535,7 @@ impl SeestarClient {
                             }
                         }
                         SeestarCommand::StartStacking => {
-                            let (is_sim, ip, port, proto) = {
+                            let (is_sim, ip, port, proto, exp_secs) = {
                                 let mut t = telem_clone.lock().unwrap();
                                 let resuming_same_target = t.stacked_frames > 0 && (t.state == SeestarState::Tracking || t.state == SeestarState::Focusing || t.state == SeestarState::Dithering);
                                 t.state = SeestarState::Stacking;
@@ -539,9 +543,9 @@ impl SeestarClient {
                                     t.stacked_frames = 0;
                                     t.total_stack_seconds = 0;
                                 }
-                                t.last_log_message = format!("Pinoaminen käynnissä kohteelle: {}!", t.target_name);
+                                t.last_log_message = format!("Pinoaminen käynnissä kohteelle: {} ({} s osavalotuksin)!", t.target_name, t.exposure_seconds);
                                 let _dither_cfg = t.dither_config;
-                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
+                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol, t.exposure_seconds)
                             };
                             stack_timer = Instant::now();
 
@@ -549,12 +553,13 @@ impl SeestarClient {
                                 if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
                                     || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
                                 {
+                                    let exp_str = exp_secs.to_string();
                                     let _ = alpaca_put(
                                         &alpaca_agent,
                                         &ip,
                                         port,
                                         "camera/0/startexposure",
-                                        &[("Duration", "10"), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
+                                        &[("Duration", &exp_str), ("Light", "true"), ("ClientID", "1"), ("ClientTransactionID", "102")],
                                     );
                                 } else if let Some(stream) = &mut active_stream {
                                     let dither_cfg = { telem_clone.lock().unwrap().dither_config };
@@ -575,7 +580,11 @@ impl SeestarClient {
 
                                             let payload = serde_json::json!({
                                                 "id": 102,
-                                                "method": "start_stack"
+                                                "method": "start_stack",
+                                                "params": {
+                                                    "exp_ms": exp_secs * 1000,
+                                                    "exposure": exp_secs
+                                                }
                                             });
                                             let msg = format!("{}\r\n", payload);
                                             let _ = stream.write_all(msg.as_bytes());
@@ -930,6 +939,31 @@ impl SeestarClient {
                                 if enabled { "PÄÄLLÄ" } else { "POIS" }
                             );
                         }
+                        SeestarCommand::SetExposure(secs) => {
+                            let clamped = secs.clamp(1, 300);
+                            let is_sim = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.exposure_seconds = clamped;
+                                t.last_log_message = format!("Osavalotusaika asetettu: {} s", clamped);
+                                t.is_simulation
+                            };
+                            let mut cfg = crate::telescope::discovery::TelescopeConfig::load();
+                            cfg.exposure_seconds = clamped;
+                            cfg.save();
+
+                            if !is_sim {
+                                if let Some(stream) = &mut active_stream {
+                                    let payload = serde_json::json!({
+                                        "id": 109,
+                                        "method": "scope_set_stack_setting",
+                                        "params": {
+                                            "exp_ms": clamped * 1000
+                                        }
+                                    });
+                                    let _ = stream.write_all(format!("{}\r\n", payload).as_bytes());
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1002,9 +1036,10 @@ impl SeestarClient {
 
                         // Stacking frame counter in simulation
                         if t.state == SeestarState::Stacking {
-                            if stack_timer.elapsed() >= Duration::from_secs(10) {
+                            let exp_secs = t.exposure_seconds.max(1) as u64;
+                            if stack_timer.elapsed() >= Duration::from_secs(exp_secs) {
                                 t.stacked_frames += 1;
-                                t.total_stack_seconds += 10;
+                                t.total_stack_seconds += exp_secs as u32;
                                 // Simulate gradual ambient cooling at night (-0.04 °C per frame)
                                 t.temp_c = (t.temp_c - 0.04).max(-25.0);
                                 stack_timer = Instant::now();
@@ -1352,6 +1387,16 @@ impl SeestarClient {
     }
 
     pub fn set_simulation(&self, sim: bool) {
+        {
+            let mut t = self.telemetry.lock().unwrap();
+            t.is_simulation = sim;
+            if sim {
+                t.connected = true;
+                t.reconnect_attempts = 0;
+                t.state = SeestarState::Idle;
+                t.last_log_message = "Simulaatiotila aktivoitu. Kaukoputki virtuaalisesti valmiina!".to_string();
+            }
+        }
         let _ = self.command_tx.send(SeestarCommand::SetSimulation(sim));
     }
 
@@ -1401,6 +1446,10 @@ impl SeestarClient {
 
     pub fn trigger_dither(&self, pixels: u32, settle_secs: u32) {
         let _ = self.command_tx.send(SeestarCommand::TriggerDither { pixels, settle_secs });
+    }
+
+    pub fn set_exposure_time(&self, seconds: u32) {
+        let _ = self.command_tx.send(SeestarCommand::SetExposure(seconds));
     }
 
     pub fn set_auto_reconnect(&self, enabled: bool) {

@@ -10,6 +10,10 @@ fn default_auto_reconnect() -> bool {
     true
 }
 
+fn default_exposure_seconds() -> u32 {
+    10
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TelescopeConfig {
     pub last_ip: String,
@@ -18,6 +22,8 @@ pub struct TelescopeConfig {
     pub is_simulation: bool,
     #[serde(default = "default_auto_reconnect")]
     pub auto_reconnect: bool,
+    #[serde(default = "default_exposure_seconds")]
+    pub exposure_seconds: u32,
     #[serde(default)]
     pub model_ips: HashMap<String, String>,
 }
@@ -29,6 +35,7 @@ impl Default for TelescopeConfig {
             scope_model: Some("Seestar S-30 (2.1° × 1.2°)".to_string()),
             is_simulation: false, // Default is OFF
             auto_reconnect: true,
+            exposure_seconds: 10,
             model_ips: HashMap::new(),
         }
     }
@@ -176,6 +183,7 @@ mod tests {
             scope_model: Some("ZWO Seestar S-30".to_string()),
             is_simulation: false,
             auto_reconnect: true,
+            exposure_seconds: 20,
             model_ips,
         };
         let json = serde_json::to_string(&cfg).unwrap();
@@ -183,6 +191,7 @@ mod tests {
         assert_eq!(loaded.last_ip, "192.168.68.77");
         assert_eq!(loaded.scope_model.as_deref(), Some("ZWO Seestar S-30"));
         assert!(!loaded.is_simulation);
+        assert_eq!(loaded.exposure_seconds, 20);
         assert_eq!(loaded.get_model(), TelescopeModel::SeestarS30);
         assert_eq!(loaded.get_ip_for_model(TelescopeModel::SeestarS30), "192.168.68.77");
     }

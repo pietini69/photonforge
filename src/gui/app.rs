@@ -3884,6 +3884,13 @@ impl PhotonForgeApp {
 
             ui.horizontal(|ui| {
                 ui.label(crate::i18n::tr("Osavalotusaika:"));
+                for &sec in &[10.0, 20.0, 30.0, 60.0] {
+                    let is_sel = (cfg.default_sub_exposure_secs - sec).abs() < 0.1;
+                    if ui.selectable_label(is_sel, format!("{:.0}s", sec)).clicked() {
+                        cfg.default_sub_exposure_secs = sec;
+                        cfg_changed = true;
+                    }
+                }
                 cfg_changed |= ui.add(egui::DragValue::new(&mut cfg.default_sub_exposure_secs).range(1.0..=300.0).suffix(" s")).changed();
             });
 

@@ -38,6 +38,7 @@ pub struct TelescopeViewState {
     pub map_pan: Vec2,
     pub map_fill_width: bool,
     pub sequence_duration_mins: u32,
+    pub sequence_sub_exposure_secs: u32,
     pub sequence_use_lp: bool,
     pub mosaic_enabled: bool,
     pub mosaic_config: MosaicGridConfig,
@@ -78,6 +79,7 @@ impl Default for TelescopeViewState {
             map_pan: Vec2::ZERO,
             map_fill_width: true,
             sequence_duration_mins: 60,
+            sequence_sub_exposure_secs: cfg.exposure_seconds,
             sequence_use_lp: false,
             mosaic_enabled: false,
             mosaic_config,
@@ -103,6 +105,7 @@ impl TelescopeViewState {
             let mut cfg = TelescopeConfig::load();
             cfg.last_ip = clean_ip.to_string();
             cfg.scope_model = Some(scope_name.to_string());
+            cfg.exposure_seconds = self.sequence_sub_exposure_secs;
             cfg.model_ips.insert(scope_name.to_string(), clean_ip.to_string());
             cfg.save();
         }
@@ -523,6 +526,25 @@ impl TelescopeView {
 
                 ui.add_space(4.0);
 
+                // Sub-exposure duration
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(format!("{}:", crate::i18n::tr("Valotusaika"))).strong().color(Color32::from_rgb(180, 220, 255)));
+                    for &sec in &[10, 20, 30, 60] {
+                        let is_sel = telem.exposure_seconds == sec;
+                        if ui.add(egui::SelectableLabel::new(is_sel, format!("{}s", sec))).on_hover_text(format!("{} {}s", crate::i18n::tr("Aseta osavalotusajaksi"), sec)).clicked() {
+                            client.set_exposure_time(sec);
+                            state.sequence_sub_exposure_secs = sec;
+                        }
+                    }
+                    let mut cur_exp = telem.exposure_seconds;
+                    if ui.add(egui::DragValue::new(&mut cur_exp).range(1..=300).suffix("s")).on_hover_text(crate::i18n::tr("Mukautettu valotusaika sekunneissa")).changed() {
+                        client.set_exposure_time(cur_exp);
+                        state.sequence_sub_exposure_secs = cur_exp;
+                    }
+                });
+
+                ui.add_space(3.0);
+
                 // Control Buttons
                 ui.horizontal_wrapped(|ui| {
                     if let Some(target) = &state.selected_object {
@@ -705,10 +727,18 @@ impl TelescopeView {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(crate::i18n::tr("Kesto:"));
                         ui.add(egui::DragValue::new(&mut state.sequence_duration_mins).range(5..=360).suffix(" min"));
+                        ui.label(crate::i18n::tr("Valotus:"));
+                        for &sec in &[10, 20, 30, 60] {
+                            let is_sel = state.sequence_sub_exposure_secs == sec;
+                            if ui.add(egui::SelectableLabel::new(is_sel, format!("{}s", sec))).clicked() {
+                                state.sequence_sub_exposure_secs = sec;
+                            }
+                        }
+                        ui.add(egui::DragValue::new(&mut state.sequence_sub_exposure_secs).range(1..=300).suffix("s"));
                         ui.checkbox(&mut state.sequence_use_lp, crate::i18n::tr("LP-suodatin"));
 
                         if ui.button(crate::i18n::tr("➕ Lisää sekvensseriin")).clicked() {
-                            sequencer.add_target(target, state.sequence_duration_mins, state.sequence_use_lp);
+                            sequencer.add_target_with_exposure(target, state.sequence_duration_mins, state.sequence_sub_exposure_secs, state.sequence_use_lp);
                         }
                     });
                 } else {
@@ -1198,7 +1228,7 @@ impl TelescopeView {
 
                             // Row 2: Metadata Badges
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new(format!("⏱ {} min", target.duration_minutes)).small().color(Color32::from_rgb(255, 220, 120)));
+                                ui.label(RichText::new(format!("⏱ {} min ({}s)", target.duration_minutes, target.sub_exposure_secs)).small().color(Color32::from_rgb(255, 220, 120)));
                                 ui.label(RichText::new("•").small().color(Color32::from_rgb(100, 110, 130)));
                                 let filt_label = if target.use_lp_filter { "🌙 LP" } else { "☀️ UV/IR" };
                                 ui.label(RichText::new(filt_label).small().color(Color32::from_rgb(130, 220, 255)));
@@ -1493,7 +1523,7 @@ impl TelescopeView {
                                 let (alt, az) = ra_dec_to_alt_az(target.ra_hours, target.dec_deg, lat, lon, &now_utc);
                                 ui.label(RichText::new(format!("📐 {}: {:.1}° (Az: {:.0}°)", crate::i18n::tr("Korkeus nyt:"), alt, az)).color(Color32::from_rgb(170, 185, 210)));
                                 ui.separator();
-                                ui.label(RichText::new(format!("⏱ {}: {} min", crate::i18n::tr("Kesto:"), target.duration_minutes)).color(Color32::from_rgb(255, 220, 120)));
+                                ui.label(RichText::new(format!("⏱ {}: {} min ({}s sub)", crate::i18n::tr("Kesto:"), target.duration_minutes, target.sub_exposure_secs)).color(Color32::from_rgb(255, 220, 120)));
                                 ui.separator();
                                 let filt_label = if target.use_lp_filter { "Dual-Band LP" } else { "UV/IR Cut" };
                                 ui.label(RichText::new(format!("🛡 {}: {}", crate::i18n::tr("Suodatin:"), filt_label)).color(Color32::from_rgb(130, 220, 255)));
