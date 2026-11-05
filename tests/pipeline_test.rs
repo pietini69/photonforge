@@ -1105,6 +1105,83 @@ fn test_live_stack_engine() {
     let drizzle_img2 = engine.get_current_image().unwrap();
     assert_eq!(drizzle_img2.width, 400);
     assert_eq!(drizzle_img2.height, 400);
+
+    // Test 3x Drizzle Live Stacking
+    engine.reset();
+    engine.update_config(|cfg| cfg.drizzle_scale = 3);
+    let frame1_3x = create_test_frame(0, 0);
+    engine.feed_image(frame1_3x, "Light_M45_3xDrizzle_001.fits");
+    let stats_3x = engine.get_stats();
+    assert_eq!(stats_3x.drizzle_scale, 3);
+    assert_eq!(stats_3x.output_resolution, (600, 600)); // 200 * 3 = 600
+    let img_3x = engine.get_current_image().unwrap();
+    assert_eq!(img_3x.width, 600);
+    assert_eq!(img_3x.height, 600);
+
+    // Test 4x Drizzle Live Stacking
+    engine.reset();
+    engine.update_config(|cfg| cfg.drizzle_scale = 4);
+    let frame1_4x = create_test_frame(0, 0);
+    engine.feed_image(frame1_4x, "Light_M45_4xDrizzle_001.fits");
+    let stats_4x = engine.get_stats();
+    assert_eq!(stats_4x.drizzle_scale, 4);
+    assert_eq!(stats_4x.output_resolution, (800, 800)); // 200 * 4 = 800
+    let img_4x = engine.get_current_image().unwrap();
+    assert_eq!(img_4x.width, 800);
+    assert_eq!(img_4x.height, 800);
+}
+
+#[test]
+fn test_synthetic_drizzle_3x_and_4x_stacking() {
+    let width = 120;
+    let height = 120;
+    let create_frame = |sx: usize, sy: usize| {
+        let mut img = AstroImage::new_rgb(width, height, 0.05);
+        let star_coords = [(30 + sx, 30 + sy), (90 + sx, 40 + sy), (40 + sx, 90 + sy), (80 + sx, 80 + sy)];
+        for (x, y) in star_coords {
+            for dy in -2..=2 {
+                for dx in -2..=2 {
+                    let px = (x as isize + dx) as usize;
+                    let py = (y as isize + dy) as usize;
+                    if px < width && py < height {
+                        let offset = (py * width + px) * 3;
+                        img.data[offset] = 0.8;
+                        img.data[offset + 1] = 0.8;
+                        img.data[offset + 2] = 0.8;
+                    }
+                }
+            }
+        }
+        img
+    };
+
+    let f1 = Arc::new(create_frame(0, 0));
+    let f2 = Arc::new(create_frame(1, 1));
+    let frames = vec![f1, f2];
+
+    // 3x Drizzle Stacking
+    let config_3x = StackingConfig {
+        method: StackingMethod::Average,
+        align_stars: false,
+        auto_crop_borders: false,
+        drizzle_scale: 3,
+        ..Default::default()
+    };
+    let res_3x = Stacker::stack(&frames, &config_3x).expect("3x stacking failed");
+    assert_eq!(res_3x.width, 120 * 3);
+    assert_eq!(res_3x.height, 120 * 3);
+
+    // 4x Drizzle Stacking
+    let config_4x = StackingConfig {
+        method: StackingMethod::Average,
+        align_stars: false,
+        auto_crop_borders: false,
+        drizzle_scale: 4,
+        ..Default::default()
+    };
+    let res_4x = Stacker::stack(&frames, &config_4x).expect("4x stacking failed");
+    assert_eq!(res_4x.width, 120 * 4);
+    assert_eq!(res_4x.height, 120 * 4);
 }
 
 #[test]

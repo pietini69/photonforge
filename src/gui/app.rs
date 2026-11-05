@@ -3526,9 +3526,11 @@ impl PhotonForgeApp {
             ui.strong(crate::i18n::tr("🔍 Resoluution skaalaus (Drizzle):"));
             ui.horizontal_wrapped(|ui| {
                 ui.radio_value(&mut self.stacking_config.drizzle_scale, 1, crate::i18n::tr("1x Normaali"));
-                ui.radio_value(&mut self.stacking_config.drizzle_scale, 2, crate::i18n::tr("2x Drizzle (Kaksinkertainen resoluutio)"));
+                ui.radio_value(&mut self.stacking_config.drizzle_scale, 2, crate::i18n::tr("2x Drizzle"));
+                ui.radio_value(&mut self.stacking_config.drizzle_scale, 3, crate::i18n::tr("3x Drizzle"));
+                ui.radio_value(&mut self.stacking_config.drizzle_scale, 4, crate::i18n::tr("4x Drizzle"));
             });
-            ui.label(RichText::new(crate::i18n::tr("2x Drizzle muodostaa alipikselisiirtymistä kaksinkertaisen resoluution ja pyöreämmät tähdet.")).small().color(Color32::from_rgb(140, 170, 200)));
+            ui.label(RichText::new(crate::i18n::tr("Drizzle muodostaa ditheröityjen osakuvien alipikselisiirtymistä korkeamman resoluution ja pyöreämmät tähdet (vaatii vähintään 15–30+ ditheröityä osakuvaa).")).small().color(Color32::from_rgb(140, 170, 200)));
         });
 
         ui.add_space(8.0);
@@ -3860,11 +3862,13 @@ impl PhotonForgeApp {
             cfg_changed |= ui.checkbox(&mut cfg.align_frames, crate::i18n::tr("Tähtien automaattinen kohdistus")).on_hover_text(crate::i18n::tr("Kohdistaa osakuvat tähtiin sub-pikselin tarkkuudella")).changed();
             cfg_changed |= ui.checkbox(&mut cfg.auto_stretch, crate::i18n::tr("Automaattinen STF-venytys")).on_hover_text(crate::i18n::tr("Säätää kontrastin automaattisesti jokaisen ruudun jälkeen")).changed();
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Drizzle:");
                 let old_drizzle = cfg.drizzle_scale;
-                ui.radio_value(&mut cfg.drizzle_scale, 1, crate::i18n::tr("1x Normaali")).on_hover_text(crate::i18n::tr("Tavallinen sensorin natiiviresoluutio"));
-                ui.radio_value(&mut cfg.drizzle_scale, 2, "2x Drizzle").on_hover_text(crate::i18n::tr("2x Super-Resolution sub-pikselin tarkkuudella (kaksinkertainen resoluutio)"));
+                ui.radio_value(&mut cfg.drizzle_scale, 1, crate::i18n::tr("1x")).on_hover_text(crate::i18n::tr("Tavallinen sensorin natiiviresoluutio"));
+                ui.radio_value(&mut cfg.drizzle_scale, 2, "2x").on_hover_text(crate::i18n::tr("2x Super-Resolution sub-pikselin tarkkuudella (kaksinkertainen resoluutio)"));
+                ui.radio_value(&mut cfg.drizzle_scale, 3, "3x").on_hover_text(crate::i18n::tr("3x Super-Resolution sub-pikselin tarkkuudella (vaatii runsaasti ditheröityjä osakuvia)"));
+                ui.radio_value(&mut cfg.drizzle_scale, 4, "4x").on_hover_text(crate::i18n::tr("4x Super-Resolution sub-pikselin tarkkuudella (vaatii runsaasti ditheröityjä osakuvia)"));
                 if cfg.drizzle_scale != old_drizzle {
                     cfg_changed = true;
                     self.live_stacker.reset();
