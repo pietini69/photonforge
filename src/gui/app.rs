@@ -128,8 +128,6 @@ pub struct PhotonForgeApp {
     reflection_blue_boost: f32,
     reflection_cyan_boost: f32,
     reflection_saturation: f32,
-    arcsinh_stretch_factor: f32,
-    arcsinh_black_point: f32,
     wb_r: f32,
     wb_g: f32,
     wb_b: f32,
@@ -287,8 +285,6 @@ impl Default for PhotonForgeApp {
             reflection_blue_boost: 2.0,
             reflection_cyan_boost: 1.3,
             reflection_saturation: 1.6,
-            arcsinh_stretch_factor: 25.0,
-            arcsinh_black_point: 0.05,
             wb_r: 1.0,
             wb_g: 1.0,
             wb_b: 1.0,
@@ -1281,30 +1277,6 @@ impl PhotonForgeApp {
         }
     }
 
-    fn run_arcsinh_stretch(&mut self) {
-        let Some(img) = self.active_image_arc() else { return };
-        match HistogramProcessor::arcsinh_stretch(&img, self.arcsinh_stretch_factor, self.arcsinh_black_point) {
-            Ok(mut stretched) => {
-                self.push_undo(crate::i18n::tr("Arcsinh-venytys"));
-                let base = img.metadata.file_name.strip_suffix(".fits")
-                    .or_else(|| img.metadata.file_name.strip_suffix(".fit"))
-                    .or_else(|| img.metadata.file_name.strip_suffix(".xisf"))
-                    .unwrap_or(&img.metadata.file_name);
-                stretched.metadata.file_name = format!("{}_Arcsinh.fits", base);
-                self.images.push(Arc::new(stretched));
-                self.active_image_index = self.images.len() - 1;
-                self.image_counter += 1;
-                self.stf_params.enabled = false; // Data is now permanently stretched
-                self.status_message = format!(
-                    "Arcsinh-venytys suoritettu (Kerroin: {:.1}, Musta piste: {:.3}).",
-                    self.arcsinh_stretch_factor, self.arcsinh_black_point
-                );
-            }
-            Err(e) => {
-                self.status_message = format!("Arcsinh-virhe: {}", e);
-            }
-        }
-    }
 
     fn run_color_balance(&mut self) {
         let Some(img) = self.active_image_arc() else { return };
@@ -4526,25 +4498,6 @@ impl PhotonForgeApp {
 
         ui.add_space(8.0);
 
-        // Arcsinh Stretch
-        ui.group(|ui| {
-            ui.set_max_width(ui.available_width());
-            ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(90.0, 240.0);
-            ui.strong(crate::i18n::tr("📈 Väriä säilyttävä venytys (Arcsinh)"));
-            ui.label(crate::i18n::tr("Nostaa himmeät sumut esiin säilyttäen täyden värikylläisyyden."));
-
-            ui.label(RichText::new(crate::i18n::tr("Venytyskerroin:")).small());
-            ui.add(egui::Slider::new(&mut self.arcsinh_stretch_factor, 5.0..=100.0).logarithmic(true).trailing_fill(true));
-            ui.label(RichText::new(crate::i18n::tr("Musta piste:")).small());
-            ui.add(egui::Slider::new(&mut self.arcsinh_black_point, 0.0..=0.20).step_by(0.005).trailing_fill(true));
-
-            let bw = ui.available_width();
-            if ui.add_sized([bw, 24.0], egui::Button::new(crate::i18n::tr("🚀 Suorita Arcsinh-venytys"))).clicked() {
-                self.run_arcsinh_stretch();
-            }
-        });
-
-        ui.add_space(8.0);
 
         // Plate Solve & WCS Celestial Annotation Overlay
         ui.group(|ui| {

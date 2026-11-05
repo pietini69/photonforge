@@ -286,6 +286,7 @@ impl HistogramProcessor {
     }
 
     /// Arcsinh non-linear stretch: preserves color saturation while pulling up faint nebulae
+    #[allow(dead_code)]
     pub fn arcsinh_stretch(
         image: &AstroImage,
         stretch_factor: f32,
