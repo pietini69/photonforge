@@ -1,4 +1,4 @@
-# 🌌 PhotonForge v1.0.0 🦀⚡
+# 🌌 PhotonForge v1.0.3 🦀⚡
 
 ### The Blazingly Fast, Native Rust Astrophotography Stacking, Post-Processing & Smart Telescope Desktop Suite for macOS, Windows & Linux
 
@@ -10,9 +10,9 @@
 
 **PhotonForge** is an ultra-fast, native desktop astrophotography processing, multi-threaded stacking, mosaic stitching, and smart telescope command station written from scratch in pure **Rust** (`eframe` / `egui`, `rayon`).
 
-Supports **ZWO Seestar S50 / S50 Pro / S30 / S30 Pro**, **DwarfLab DWARF 3 / DWARF II**, **Vaonis Vespera II / Pro**, **Celestron Origin RASA**, and **ASCOM Alpaca (Universal REST Mount)**, plus custom telescopes and traditional astrophotography rigs.
+Supports **ZWO Seestar S50 / S50 Pro / S30 / S30 Pro**, **DwarfLab DWARF 3 / DWARF II / Mini / DRACO**, **Vaonis Vespera II / Pro**, **Celestron Origin RASA**, and **ASCOM Alpaca (Universal REST Mount)**, plus custom telescopes and traditional astrophotography rigs.
 
-Part of the **PhotonCAM** software family, PhotonForge combines the core post-processing power of **PixInsight** and **Siril** with a native desktop command center for smart telescopes and traditional rigs — in a single **~10 MB native executable** that starts in under **0.2 seconds**.
+Part of the **PhotonCAM** software family, PhotonForge combines the core post-processing power of **PixInsight** and **Siril** with a native desktop command center for smart telescopes and traditional rigs — in a single **~5–11 MB native executable** that starts in under **0.2 seconds** with zero external dependencies.
 
 ---
 
@@ -22,17 +22,17 @@ Astrophotographers today often have to juggle 5–6 separate programs just to pr
 
 **PhotonForge brings the entire workflow into one cohesive, instant-startup native desktop app:**
 
-| Feature | Legacy Free Stackers | Heavy Commercial Suites ($200–$300+) | Mobile Smart Scope Apps | **PhotonForge v1.0.0 🦀** |
+| Feature | Legacy Free Stackers | Heavy Commercial Suites ($200–$300+) | Mobile Smart Scope Apps | **PhotonForge v1.0.3 🦀** |
 |---|---|---|---|---|
 | **OS Support** | Windows-centric or complex setup | Windows, macOS, Linux | Phone / Tablet only | **Native macOS (Universal 2), Windows x64 & Linux x86_64** |
-| **Startup & Size** | Slow startup, huge temp scratch disks | 1.5 GB+ install, slow startup | Mobile UI only | **<0.2s cold start, ~10 MB single binary** |
+| **Startup & Size** | Slow startup, huge temp scratch disks | 1.5 GB+ install, slow startup | Mobile UI only | **<0.2s cold start, ~5–11 MB single binary** |
 | **File Formats** | FITS / TIFF | FITS / XISF / TIFF | JPEG / FITS on device | **Native FITS (8/16/32/-32/-64), PixInsight `.xisf`, 16-bit TIFF, PNG** |
 | **Star Alignment & Stacking** | Manual scripts / folders | Multi-step WBPP pipeline | Internal 1x stack | **1-Click Sub-Pixel Star Alignment, Sigma Clipping & 2x Super-Resolution Drizzle** |
 | **Multi-Panel Mosaic Stitcher** | ❌ None / complex scripts | Separate paid modules | Limited framing | **Built-in Multi-Panel Mosaic Planner + Photometric Seam-Feathered Stitcher** |
 | **Color Calibration (PCC / SPCC)** | Basic white balance | ✅ Included | ❌ None | **1-Click Photometric (PCC) & Spectrophotometric (SPCC) Star Calibration** |
-| **WCS Plate Solver & Overlay** | External CLI required | ✅ Included | Basic overlay | **Built-in Blind/Catalog WCS Solver + RA/Dec Grid, M/NGC/IC & Star Annotations** |
+| **WCS & Cloud Plate Solving** | External CLI required | ✅ Included | Basic overlay | **Built-in Blind/Catalog WCS Solver + Astrometry.net Cloud API Integration** |
 | **AI / Wavelet Starless & Denoise** | External tools required | Paid plugins ($60–$180 extra) | Basic denoise | **Built-in Multi-Scale Wavelet Engine + Direct SyQon Neural AI Integration (Axiom, Parallax, Prism)** |
-| **Direct Seestar S50/S30 Desktop Control** | ❌ None | ❌ None | Mobile only | **Built-in Wi-Fi TCP Client, All-Night Multi-Target Sequencer, Auto-Focus, Dither & SMB Live Stack** |
+| **Direct Telescope Desktop Control** | ❌ None | ❌ None | Mobile only | **Built-in ASCOM Alpaca & DwarfLab WebSocket Client, Sequencer, Auto-Focus, Dither & SMB Live Stack** |
 | **Price & License** | Free | €250 – €400+ | Hardware locked | **100% Freeware / Pay What You Want (0 €+)** |
 
 ---
@@ -54,19 +54,20 @@ Astrophotographers today often have to juggle 5–6 separate programs just to pr
 - **⚡ Real-Time Auto-STF (Screen Transfer Function):** Linked and Unlinked RGB channel Midtones Transfer Function (MTF) using Median + MAD statistics (`0.08 Deep`, `0.10 Standard`, `0.20 Bright` presets) without altering linear 32-bit float data.
 - **🌐 Automatic Background Extraction (ABE):** 2D polynomial surface fitting (Degrees 1–4) with both **Subtraction** (light pollution gradients) and **Division** (vignetting correction).
 - **🎯 PCC & SPCC (Photometric & Spectrophotometric Color Calibration):** Calibrates true astrophysical color balance using unsaturated field stars, Planckian blackbody temperatures ($T_{\text{eff}}$), white reference models (*Average Spiral Galaxy*, *G2V Solar Star*), camera QE curves (*Sony IMX462/IMX585/IMX571/IMX533*), and dual-band filter profiles.
-- **🧭 WCS Plate Solver & Sky Annotation Overlay:** Computes TAN gnomonic WCS projection (`CRVAL`, `CD` matrix, pixel scale, field rotation) and renders non-destructive vector overlays directly on the image: **RA/Dec coordinate grid**, **Messier/NGC/IC deep-sky ellipses**, **identified stars**, and **N/E Compass Rose**.
+- **🧭 WCS Plate Solver & Astrometry.net Cloud Integration:** Computes TAN gnomonic WCS projection (`CRVAL`, `CD` matrix, pixel scale, field rotation) natively or via the **Astrometry.net Cloud API** with live credential validation, rendering non-destructive vector overlays: **RA/Dec coordinate grid**, **Messier/NGC/IC deep-sky ellipses**, **identified stars**, and **N/E Compass Rose**.
 - **🌈 Narrowband & Broadband Channel Combiner:** Instant **SHO (Hubble)**, **HOO (Bicolor)**, **HSO**, and **LRGB** combination with automatic sub-pixel channel registration and Linear Fit background matching.
 - **📈 Monotonic PCHIP Spline Curves & Arcsinh Stretch:** Interactive multi-channel (`RGB, R, G, B, Saturation`) spline curves with live preview, plus color-preserving **Arcsinh Stretch**, **Dual-Band Ha/[OIII] Boost**, **Reflection Nebula Blue/Cyan Boost**, **SCNR Green Removal**, and **Morphological Star Reduction**.
 - **✨ SyQon Neural AI & Built-in Wavelet Engine:** Seamless integration with free local SyQon AI models (**Axiom** Star Removal / Starless separation, **Parallax** PSF Deconvolution & Star Aberration Fix, **Prism** Deep Denoise, and **Deep Gradient** removal), plus a built-in pure-Rust À Trous wavelet fallback engine that works out-of-the-box with zero external dependencies.
 
-### 4. 🔭 Multi-Telescope Command Center (Seestar S50/S50 Pro/S30/S30 Pro, DWARF 3/II, Vespera, Origin & ASCOM Alpaca)
+### 4. 🔭 Multi-Telescope Command Center & 3D Sky Dome
 - **Extensive Smart Telescope Profiles:**
   - **ZWO Seestar Family:** S50 (250mm f/5), S50 Pro (260mm f/5.2 4K), S30 (150mm f/5), S30 Pro (160mm f/5.3 4K)
-  - **DwarfLab Family:** DWARF 3 (150mm f/4.3 4K), DWARF II (100mm f/4.2 4K)
+  - **DwarfLab Family:** DWARF 3 (150mm f/4.3 4K), DWARF II (100mm f/4.2 4K), DWARF Mini, DRACO via direct WebSocket Open API and Alpaca bridge
   - **Vaonis Family:** Vespera II (250mm f/5 4K), Vespera Pro (250mm f/5 12.5 MP)
   - **Celestron:** Origin RASA (335mm f/2.2)
   - **Universal / Custom:** ASCOM Alpaca (REST network mount) and custom telescope/sensor configuration.
-- **Interactive All-Sky Dome & Star Chart:** Real-time altitude/azimuth sky dome, tonight's visibility & altitude curve (18:00–06:00), and searchable Deep-Sky Catalog (Galaxies, Nebulae, Clusters).
+- **Persistent Settings:** Automatically remembers your selected telescope model, per-model network IP addresses, and simulation preferences across app restarts.
+- **Interactive 3D Horizon Sky Dome & All-Sky Chart:** Smooth exponential zoom, ground-referenced 3D horizon perspective and all-sky zenith view with tonight's visibility & altitude curve (18:00–06:00), plus searchable Deep-Sky Catalog.
 - **Automated All-Night Sequencer:** Queue multiple targets for the entire night with automatic meridian/horizon checks, scheduled **Auto-Focus** (by time interval or $\Delta T$ temperature drop), **Dithering**, **Dual-Band LP Filter** switching, **Wi-Fi Drop Watchdog (Auto-Reconnect)**, and automatic dawn parking.
 - **Interactive Mosaic Framing Planner:** Visually frame $1\times2$, $2\times1$, $2\times2$, $3\times2$, or $3\times3$ mosaics with custom FOV and overlap % directly on the sky chart and send all panels to the night sequencer.
 - **1-Click Bilingual UI (`🇬🇧 EN` / `🇫🇮 FI`):** Switch the entire interface between English and Finnish at any time from the top toolbar.
@@ -79,10 +80,10 @@ Pre-built binaries are available from [GitHub Releases](https://github.com/pieti
 
 | Operating System | Package | Architecture | Direct Download |
 |---|---|---|---|
-| **macOS** (11.0+) | **DMG Installer** | Universal 2 (Apple Silicon M1–M4 + Intel) | [PhotonForge-1.0.0-universal.dmg](https://github.com/pietini69/photonforge/releases/download/v1.0.0/PhotonForge-1.0.0-universal.dmg) |
-| **macOS** (11.0+) | **ZIP Archive** | Universal 2 | [PhotonForge-1.0.0-macos-universal.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.0/PhotonForge-1.0.0-macos-universal.zip) |
-| **Windows** (10/11) | **ZIP Executable** | x86_64 (64-bit) | [PhotonForge-1.0.0-windows-x64.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.0/PhotonForge-1.0.0-windows-x64.zip) |
-| **Linux** | **tar.gz Archive** | x86_64 | [PhotonForge-1.0.0-linux-x86_64.tar.gz](https://github.com/pietini69/photonforge/releases/download/v1.0.0/PhotonForge-1.0.0-linux-x86_64.tar.gz) |
+| **macOS** (11.0+) | **DMG Installer** | Universal 2 (Apple Silicon M1–M4 + Intel) | [PhotonForge-1.0.3-universal.dmg](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-universal.dmg) |
+| **macOS** (11.0+) | **ZIP Archive** | Universal 2 | [PhotonForge-1.0.3-macos-universal.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-macos-universal.zip) |
+| **Windows** (10/11) | **ZIP Executable** | x86_64 (64-bit Standalone) | [PhotonForge-1.0.3-windows-x64.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-windows-x64.zip) |
+| **Linux** | **tar.gz Archive** | x86_64 (glibc 2.17+) | [PhotonForge-1.0.3-linux-x86_64.tar.gz](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-linux-x86_64.tar.gz) |
 
 > **macOS First Launch Note:** If macOS Gatekeeper flags the app as unsigned, right-click `PhotonForge.app` in `/Applications` and select **Open**, or run:
 > ```bash
