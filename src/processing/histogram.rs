@@ -73,6 +73,65 @@ impl HistogramProcessor {
                     });
                 out
             }
+            crate::processing::stf::StretchMode::HyperMetric => {
+                let d = stf.hms_d.max(1.0);
+                let b = stf.hms_b.max(0.0001);
+                let sp = stf.hms_sp.max(0.0);
+                let grip = stf.hms_color_grip.max(0.0);
+
+                let asinh_b = b.asinh();
+                let denom = ((d * (1.0 - sp) + b).asinh() - asinh_b).max(1e-6);
+
+                let hms_eval = |val: f32| -> f32 {
+                    if val <= sp {
+                        0.0
+                    } else {
+                        (((d * (val - sp) + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
+                    }
+                };
+
+                let mut out = image.clone();
+                out.data
+                    .par_chunks_exact_mut(image.channels)
+                    .for_each(|pixel| {
+                        if image.channels == 1 {
+                            pixel[0] = hms_eval(pixel[0]);
+                        } else {
+                            let r = pixel[0];
+                            let g = pixel[1];
+                            let bl = pixel[2];
+
+                            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+                            if lum > 1e-7 {
+                                let stretched_lum = hms_eval(lum);
+                                let scale = stretched_lum / lum;
+
+                                let r_base = r * scale;
+                                let g_base = g * scale;
+                                let b_base = bl * scale;
+
+                                let (r_fin, g_fin, b_fin) = if (grip - 1.0).abs() < 1e-3 {
+                                    (r_base, g_base, b_base)
+                                } else {
+                                    (
+                                        stretched_lum + grip * (r_base - stretched_lum),
+                                        stretched_lum + grip * (g_base - stretched_lum),
+                                        stretched_lum + grip * (b_base - stretched_lum),
+                                    )
+                                };
+
+                                pixel[0] = r_fin.clamp(0.0, 1.0);
+                                pixel[1] = g_fin.clamp(0.0, 1.0);
+                                pixel[2] = b_fin.clamp(0.0, 1.0);
+                            } else {
+                                pixel[0] = 0.0;
+                                pixel[1] = 0.0;
+                                pixel[2] = 0.0;
+                            }
+                        }
+                    });
+                out
+            }
             crate::processing::stf::StretchMode::Logarithmic => {
                 let a = stf.log_factor.max(1.0);
                 let b = stf.log_black;

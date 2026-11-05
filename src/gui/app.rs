@@ -1976,6 +1976,11 @@ impl eframe::App for PhotonForgeApp {
                     } else if self.stf_params.mode == crate::processing::stf::StretchMode::Arcsinh {
                         ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.arcsinh_stretch, 1.0..=1000.0).logarithmic(true).prefix("S: "))
                             .on_hover_text(crate::i18n::tr("Arcsinh-venytyskerroin"));
+                    } else if self.stf_params.mode == crate::processing::stf::StretchMode::HyperMetric {
+                        ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.hms_d, 1.0..=500.0).logarithmic(true).prefix("D: "))
+                            .on_hover_text(crate::i18n::tr("VeraLux HyperMetric venytyskerroin (D)"));
+                        ui.add_sized([65.0, 20.0], egui::Slider::new(&mut self.stf_params.hms_color_grip, 0.5..=2.5).step_by(0.1).prefix("Väri: "))
+                            .on_hover_text(crate::i18n::tr("Vektorivärien vahvistus / saturaatio"));
                     } else if self.stf_params.mode == crate::processing::stf::StretchMode::Logarithmic {
                         ui.add_sized([75.0, 20.0], egui::Slider::new(&mut self.stf_params.log_factor, 10.0..=10000.0).logarithmic(true).prefix("Log: "))
                             .on_hover_text(crate::i18n::tr("Logaritminen kerroin"));
@@ -3270,6 +3275,44 @@ impl PhotonForgeApp {
                     ui.label(crate::i18n::tr("Mustapiste (Black Point):"));
                     if ui.add(egui::Slider::new(&mut self.stf_params.arcsinh_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
                         self.image_counter += 1;
+                    }
+                }
+                crate::processing::stf::StretchMode::HyperMetric => {
+                    ui.strong(RichText::new("✨ VeraLux HyperMetric Stretch (HMS)").color(Color32::from_rgb(180, 220, 255)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Riccardo Paternitin VeraLux HMS: fotometrinen hyperbolinen venytys, joka irrottaa luminanssigeometrian kromaattisista vektoreista säilyttäen tähtien ja sumujen todellisen värispektrin ilman puhkipalamista.")).small().color(Color32::from_rgb(160, 190, 220)));
+
+                    ui.add_space(6.0);
+                    ui.label(crate::i18n::tr("Venytyskerroin (Stretch Intensity D):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_d, 1.0..=500.0).logarithmic(true).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Pehmennys / Lineaarisuus (b):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_b, 0.001..=0.3).step_by(0.005).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Varjopiste (Shadow Point SP):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_sp, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(crate::i18n::tr("Vektorivärien vahvistus (Color Grip):"));
+                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_color_grip, 0.2..=2.5).step_by(0.05).trailing_fill(true)).changed() {
+                        self.image_counter += 1;
+                    }
+
+                    ui.add_space(6.0);
+                    if ui.button(crate::i18n::tr("🪄 Laske adaptiivinen tausta (SP)")).clicked() {
+                        if let Some(img) = self.active_image() {
+                            let (med, mad) = img.channel_median_and_mad(0);
+                            self.stf_params.hms_sp = (med - 2.8 * mad).max(0.0);
+                            self.image_counter += 1;
+                        }
                     }
                 }
                 crate::processing::stf::StretchMode::Logarithmic => {

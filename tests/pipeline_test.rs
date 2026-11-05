@@ -1757,6 +1757,21 @@ fn test_stretch_modes_and_linear_default_after_stacking() {
     let root_bytes = img.to_rgb8_with_stf(&stf);
     assert!(!root_bytes.is_empty());
 
+    // 8b. Test VeraLux HyperMetric Stretch (HMS)
+    stf.set_mode(StretchMode::HyperMetric);
+    stf.hms_d = 40.0;
+    stf.hms_b = 0.05;
+    stf.hms_sp = 0.01;
+    stf.hms_color_grip = 1.2;
+    let hms_bytes = img.to_rgb8_with_stf(&stf);
+    assert!(!hms_bytes.is_empty());
+    assert!(hms_bytes[neb_idx] > hms_bytes[neb_idx + 1]); // Red channel dominates and preserved
+    assert!(hms_bytes[neb_idx] > 180);
+
+    let hms_baked = HistogramProcessor::apply_permanent_stretch_params(&img, &stf);
+    assert_eq!(hms_baked.width, 100);
+    assert!(hms_baked.data[neb_idx] > hms_baked.data[neb_idx + 1]);
+
     // 9. Test Permanent Stretch Baking
     let perm_stretched = HistogramProcessor::apply_permanent_stretch_params(&img, &stf);
     assert_eq!(perm_stretched.width, 100);

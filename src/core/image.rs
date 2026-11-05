@@ -585,6 +585,73 @@ impl AstroImage {
                     });
                 out
             }
+            crate::processing::stf::StretchMode::HyperMetric => {
+                let d = stf.hms_d.max(1.0);
+                let b = stf.hms_b.max(0.0001);
+                let sp = stf.hms_sp.max(0.0);
+                let grip = stf.hms_color_grip.max(0.0);
+
+                let asinh_b = b.asinh();
+                let denom = ((d * (1.0 - sp) + b).asinh() - asinh_b).max(1e-6);
+
+                let hms_eval = |val: f32| -> f32 {
+                    if val <= sp {
+                        0.0
+                    } else {
+                        (((d * (val - sp) + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
+                    }
+                };
+
+                out.par_chunks_exact_mut(3)
+                    .enumerate()
+                    .for_each(|(i, pixel)| {
+                        let src_idx = i * self.channels;
+                        if self.channels == 1 {
+                            let v = self.data[src_idx];
+                            let stretched = hms_eval(v);
+                            let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
+                            pixel[0] = byte;
+                            pixel[1] = byte;
+                            pixel[2] = byte;
+                        } else {
+                            let r = self.data[src_idx];
+                            let g = self.data[src_idx + 1];
+                            let bl = self.data[src_idx + 2];
+
+                            // True Color / Photometric Luminance vector extraction
+                            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+                            if lum > 1e-7 {
+                                let stretched_lum = hms_eval(lum);
+                                let scale = stretched_lum / lum;
+
+                                // Base vector preservation
+                                let r_base = r * scale;
+                                let g_base = g * scale;
+                                let b_base = bl * scale;
+
+                                // Chromatic vector grip (saturation control)
+                                let (r_fin, g_fin, b_fin) = if (grip - 1.0).abs() < 1e-3 {
+                                    (r_base, g_base, b_base)
+                                } else {
+                                    (
+                                        stretched_lum + grip * (r_base - stretched_lum),
+                                        stretched_lum + grip * (g_base - stretched_lum),
+                                        stretched_lum + grip * (b_base - stretched_lum),
+                                    )
+                                };
+
+                                pixel[0] = (r_fin * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[1] = (g_fin * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[2] = (b_fin * 255.0).clamp(0.0, 255.0) as u8;
+                            } else {
+                                pixel[0] = 0;
+                                pixel[1] = 0;
+                                pixel[2] = 0;
+                            }
+                        }
+                    });
+                out
+            }
             crate::processing::stf::StretchMode::Logarithmic => {
                 let a = stf.log_factor.max(1.0);
                 let b = stf.log_black;

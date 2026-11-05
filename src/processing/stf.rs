@@ -11,6 +11,8 @@ pub enum StretchMode {
     ManualMtf,
     /// Color-preserving Arcsinh stretch (Lupton/Siril algorithm)
     Arcsinh,
+    /// Riccardo Paterniti's VeraLux HyperMetric Stretch (HMS: Photometric Hyperbolic Stretch & True Color vector preservation)
+    HyperMetric,
     /// Logarithmic stretch (for high dynamic range nebula/galaxy cores)
     Logarithmic,
     /// Generalized Hyperbolic Stretch (GHS-style localized contrast)
@@ -26,6 +28,7 @@ impl StretchMode {
             StretchMode::AutoStf,
             StretchMode::ManualMtf,
             StretchMode::Arcsinh,
+            StretchMode::HyperMetric,
             StretchMode::Logarithmic,
             StretchMode::Ghs,
             StretchMode::Root,
@@ -38,6 +41,7 @@ impl StretchMode {
             StretchMode::AutoStf => "⚡ Auto-STF (Automaatti)",
             StretchMode::ManualMtf => "🎚 Manuaalinen MTF",
             StretchMode::Arcsinh => "🌈 Arcsinh (Värit säilyttävä)",
+            StretchMode::HyperMetric => "✨ VeraLux HyperMetric (HMS)",
             StretchMode::Logarithmic => "📐 Logaritminen (HDR)",
             StretchMode::Ghs => "📈 Hyperbolinen (GHS)",
             StretchMode::Root => "🌿 Juuri (Gamma)",
@@ -50,6 +54,7 @@ impl StretchMode {
             StretchMode::AutoStf => "Auto-STF",
             StretchMode::ManualMtf => "Manuaali-MTF",
             StretchMode::Arcsinh => "Arcsinh",
+            StretchMode::HyperMetric => "HyperMetric",
             StretchMode::Logarithmic => "Logaritminen",
             StretchMode::Ghs => "GHS",
             StretchMode::Root => "Juuri",
@@ -89,6 +94,12 @@ pub struct StfParameters {
     pub arcsinh_stretch: f32, // 1.0 .. 1000.0, default 100.0
     pub arcsinh_black: f32,   // 0.0 .. 0.2, default 0.0
 
+    // VeraLux HyperMetric Stretch (HMS) parameters
+    pub hms_d: f32,          // Stretch Intensity D: 1.0 .. 500.0, default 40.0
+    pub hms_b: f32,          // Softening / Linearity b: 0.001 .. 0.5, default 0.05
+    pub hms_sp: f32,         // Shadow Point SP: 0.0 .. 0.2, default 0.0
+    pub hms_color_grip: f32, // Vector color / chromatic grip: 0.2 .. 3.0, default 1.0
+
     // Logarithmic stretch parameters
     pub log_factor: f32,      // 10.0 .. 50000.0, default 1000.0
     pub log_black: f32,       // 0.0 .. 0.2, default 0.0
@@ -113,6 +124,10 @@ impl Default for StfParameters {
             linear_exposure_ev: 0.0,
             arcsinh_stretch: 100.0,
             arcsinh_black: 0.0,
+            hms_d: 40.0,
+            hms_b: 0.05,
+            hms_sp: 0.0,
+            hms_color_grip: 1.0,
             log_factor: 1000.0,
             log_black: 0.0,
             ghs_d: 10.0,
@@ -158,6 +173,10 @@ impl StfParameters {
             linear_exposure_ev: 0.0,
             arcsinh_stretch: 100.0,
             arcsinh_black: 0.0,
+            hms_d: 40.0,
+            hms_b: 0.05,
+            hms_sp: 0.0,
+            hms_color_grip: 1.0,
             log_factor: 1000.0,
             log_black: 0.0,
             ghs_d: 10.0,
@@ -229,6 +248,9 @@ impl StfParameters {
                 };
             }
         }
+
+        let (first_med, first_mad) = image.channel_median_and_mad(0);
+        stf.hms_sp = (first_med - 2.8 * first_mad).max(0.0);
 
         stf
     }

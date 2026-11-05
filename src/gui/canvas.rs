@@ -938,6 +938,10 @@ fn compute_stf_hash(stf: &StfParameters) -> u64 {
     h = h.wrapping_mul(31).wrapping_add(stf.linear_exposure_ev.to_bits() as u64);
     h = h.wrapping_mul(31).wrapping_add(stf.arcsinh_stretch.to_bits() as u64);
     h = h.wrapping_mul(31).wrapping_add(stf.arcsinh_black.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.hms_d.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.hms_b.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.hms_sp.to_bits() as u64);
+    h = h.wrapping_mul(31).wrapping_add(stf.hms_color_grip.to_bits() as u64);
     h = h.wrapping_mul(31).wrapping_add(stf.log_factor.to_bits() as u64);
     h = h.wrapping_mul(31).wrapping_add(stf.log_black.to_bits() as u64);
     h = h.wrapping_mul(31).wrapping_add(stf.ghs_d.to_bits() as u64);
