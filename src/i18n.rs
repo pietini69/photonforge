@@ -751,7 +751,7 @@ pub fn tr(s: &'static str) -> &'static str {
         "📁 Kuvat: DwarfLabin kuvat siirtyvät USB-kaapelilla (/Volumes/DWARF) tai sisäänrakennetun HTTP-palvelimen kautta (http://<IP>:8082)." => "📁 Images: DwarfLab images transfer via USB cable (/Volumes/DWARF) or via built-in HTTP server (http://<IP>:8082).",
         "• ZWO Seestar S50, S50 Pro, S30 ja S30 Pro" => "• ZWO Seestar S50, S50 Pro, S30, and S30 Pro",
         "• DwarfLab DWARF 3, DWARF Mini, DWARF II ja DRACO" => "• DwarfLab DWARF 3, DWARF Mini, DWARF II, and DRACO",
-        "• Vaonis Vespera II / Pro ja Celestron Origin" => "• Vaonis Vespera II / Pro and Celestron Origin",
+        "• Celestron Origin RASA" => "• Celestron Origin RASA",
         "• ASCOM Alpaca -jalustat ja manuaaliset kamerat" => "• ASCOM Alpaca mounts and manual cameras",
         "Ei kuvaa ladattuna. Avaa kuvatiedostoja yläpalkista tai raahaa ne tähän." => "No image loaded. Open images from the top toolbar or drag and drop files here.",
         "(satelliitit ja tähdet)" => "(satellites and stars)",

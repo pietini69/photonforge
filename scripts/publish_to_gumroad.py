@@ -45,7 +45,7 @@ TAGS = [
     "linux"
 ]
 
-SUMMARY = "High-performance 32-bit astrophotography processing, sub-pixel star alignment, 2x Drizzle, mosaic stitching & direct Smart Telescope control (ZWO Seestar S50/S50 Pro/S30/S30 Pro, DwarfLab DWARF 3/II, Vespera, Origin, ASCOM Alpaca) with 360° Sky Atlas and All-Night Sequencer for macOS, Windows and Linux."
+SUMMARY = "High-performance 32-bit astrophotography processing, sub-pixel star alignment, 2x Drizzle, mosaic stitching & direct Smart Telescope control (ZWO Seestar S50/S50 Pro/S30/S30 Pro, DwarfLab DWARF 3/II/Mini/DRACO, Celestron Origin, ASCOM Alpaca) with 360° Sky Atlas and All-Night Sequencer for macOS, Windows and Linux."
 
 DESCRIPTION_HTML = f"""
 <h2>🔭 Meet PhotonForge v{VERSION}: 32-Bit Astrophotography &amp; Smart Telescope Desktop Suite</h2>
@@ -75,7 +75,6 @@ DESCRIPTION_HTML = f"""
     <ul>
       <li><strong>ZWO Seestar Family (S50, S50 Pro 4K, S30, S30 Pro 4K):</strong> Direct Wi-Fi ASCOM Alpaca REST &amp; TCP/JSON-RPC control (fully compatible with firmware 7.x &amp; 3.x+), auto-discovery, telemetry, slewing joystick, autofocus, dual-band filter toggle, and SMB sub-frame synchronization.</li>
       <li><strong>DwarfLab Family (DWARF 3 4K, DWARF II, Mini, DRACO):</strong> Open API control, telemetry, autofocus, and live image ingestion.</li>
-      <li><strong>Vaonis Family (Vespera II 4K &amp; Vespera Pro 12.5 MP):</strong> Dedicated optics &amp; sensor FOV profiles with automated folder/FTP ingest live stacking.</li>
       <li><strong>Celestron Origin RASA:</strong> Native 335mm f/2.2 widefield FOV profiling and plate-solved mosaic planning.</li>
       <li><strong>ASCOM Alpaca (Universal REST):</strong> Cross-platform network control for Sky-Watcher, ZWO AM3/AM5, iOptron, OnStep, and custom telescope rigs.</li>
     </ul>

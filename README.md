@@ -10,7 +10,7 @@
 
 **PhotonForge** is an ultra-fast, native desktop astrophotography processing, multi-threaded stacking, mosaic stitching, and smart telescope command station written from scratch in pure **Rust** (`eframe` / `egui`, `rayon`).
 
-Supports **ZWO Seestar S50 / S50 Pro / S30 / S30 Pro**, **DwarfLab DWARF 3 / DWARF II / Mini / DRACO**, **Vaonis Vespera II / Pro**, **Celestron Origin RASA**, and **ASCOM Alpaca (Universal REST Mount)**, plus custom telescopes and traditional astrophotography rigs.
+Supports **ZWO Seestar S50 / S50 Pro / S30 / S30 Pro**, **DwarfLab DWARF 3 / DWARF II / Mini / DRACO**, **Celestron Origin RASA**, and **ASCOM Alpaca (Universal REST Mount)**, plus custom telescopes and traditional astrophotography rigs.
 
 Part of the **PhotonCAM** software family, PhotonForge combines the core post-processing power of **PixInsight** and **Siril** with a native desktop command center for smart telescopes and traditional rigs — in a single **~5–11 MB native executable** that starts in under **0.2 seconds** with zero external dependencies.
 
@@ -63,7 +63,6 @@ Astrophotographers today often have to juggle 5–6 separate programs just to pr
 - **Extensive Smart Telescope Profiles:**
   - **ZWO Seestar Family:** S50 (250mm f/5), S50 Pro (260mm f/5.2 4K), S30 (150mm f/5), S30 Pro (160mm f/5.3 4K)
   - **DwarfLab Family:** DWARF 3 (150mm f/4.3 4K), DWARF II (100mm f/4.2 4K), DWARF Mini, DRACO via direct WebSocket Open API and Alpaca bridge
-  - **Vaonis Family:** Vespera II (250mm f/5 4K), Vespera Pro (250mm f/5 12.5 MP)
   - **Celestron:** Origin RASA (335mm f/2.2)
   - **Universal / Custom:** ASCOM Alpaca (REST network mount) and custom telescope/sensor configuration.
 - **Persistent Settings:** Automatically remembers your selected telescope model, per-model network IP addresses, and simulation preferences across app restarts.
