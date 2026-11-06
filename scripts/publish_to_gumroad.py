@@ -21,7 +21,7 @@ DIST_DIR = os.path.join(PROJECT_DIR, "dist")
 ASSETS_DIR = os.path.join(DIST_DIR, "gumroad_assets")
 TRACKER_FILE = "/Volumes/Dataa/EtsyTuotteet/gumroad_published.json"
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 PRODUCT_NAME = "PhotonForge – Smart Telescope Control & 32-bit Astrophotography Suite (macOS, Windows, Linux)"
 CUSTOM_PERMALINK = "photonforge"
 CURRENCY = "eur"
@@ -61,10 +61,10 @@ DESCRIPTION_HTML = f"""
 
 <h3>⚡ What’s New in v{VERSION}</h3>
 <ul>
-  <li><strong>🌐 Astrometry.net Cloud Plate Solving:</strong> Integrated online blind plate solving via Astrometry.net API. Solve any starfield accurately even with wide focal lengths or unknown orientations with background asynchronous solving and live progress.</li>
-  <li><strong>🔭 DwarfLab Smart Telescope Integration:</strong> Full control and optics/sensor profiles for DwarfLab DWARF 3 4K, DWARF II, DWARF Mini, and DRACO smart telescopes via Open API (WebSocket) and dwarfAlp Alpaca bridge.</li>
-  <li><strong>🌐 Interactive 3D Horizon Sky Dome:</strong> New 3D horizon stereographic perspective allows viewing celestial targets as seen standing under the night sky, with smooth exponential zoom.</li>
-  <li><strong>📐 Stabilized Responsive UI &amp; Zero Drift:</strong> Completely redesigned layout engine eliminating panel drift, ensuring smooth resizing from 320px to 650px with automatic text wrapping and title truncation.</li>
+  <li><strong>📸 Direct ASCOM Alpaca Live Stacking &amp; Continuous Capture:</strong> Native automated camera exposure loop for ZWO Seestar (S50/S50 Pro/S30/S30 Pro) and ASCOM Alpaca mounts. PhotonForge commands exposures, polls completion, fetches 16-bit raw sensor frames directly over HTTP, writes compliant FITS files, and feeds the Live Stacker in real-time — no phone required!</li>
+  <li><strong>⏱️ Sub-Exposure Time Presets &amp; Custom Controls:</strong> Instant exposure duration buttons (<code>10s</code>, <code>20s</code>, <code>30s</code>, <code>60s</code>) and custom drag slider (1..300s) across Telescope Controls, Night Sequencer targets, and Live Stacking settings.</li>
+  <li><strong>📂 Dual Imaging Workflow:</strong> Seamless support for both direct standalone Alpaca camera shooting and traditional Seestar mobile app capture with 1-click <em>Open Seestar Network Share (EMMC Images)</em> integration.</li>
+  <li><strong>🌐 Astrometry.net Cloud Plate Solving &amp; 3D Sky Dome:</strong> High-precision cloud blind plate solving and 3D stereographic horizon dome view with smooth exponential zoom.</li>
 </ul>
 
 <hr>

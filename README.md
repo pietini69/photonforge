@@ -1,4 +1,4 @@
-# 🌌 PhotonForge v1.0.3 🦀⚡
+# 🌌 PhotonForge v1.0.4 🦀⚡
 
 ### The Blazingly Fast, Native Rust Astrophotography Stacking, Post-Processing & Smart Telescope Desktop Suite for macOS, Windows & Linux
 
@@ -22,7 +22,7 @@ Astrophotographers today often have to juggle 5–6 separate programs just to pr
 
 **PhotonForge brings the entire workflow into one cohesive, instant-startup native desktop app:**
 
-| Feature | Legacy Free Stackers | Heavy Commercial Suites ($200–$300+) | Mobile Smart Scope Apps | **PhotonForge v1.0.3 🦀** |
+| Feature | Legacy Free Stackers | Heavy Commercial Suites ($200–$300+) | Mobile Smart Scope Apps | **PhotonForge v1.0.4 🦀** |
 |---|---|---|---|---|
 | **OS Support** | Windows-centric or complex setup | Windows, macOS, Linux | Phone / Tablet only | **Native macOS (Universal 2), Windows x64 & Linux x86_64** |
 | **Startup & Size** | Slow startup, huge temp scratch disks | 1.5 GB+ install, slow startup | Mobile UI only | **<0.2s cold start, ~5–11 MB single binary** |
@@ -79,10 +79,10 @@ Pre-built binaries are available from [GitHub Releases](https://github.com/pieti
 
 | Operating System | Package | Architecture | Direct Download |
 |---|---|---|---|
-| **macOS** (11.0+) | **DMG Installer** | Universal 2 (Apple Silicon M1–M4 + Intel) | [PhotonForge-1.0.3-universal.dmg](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-universal.dmg) |
-| **macOS** (11.0+) | **ZIP Archive** | Universal 2 | [PhotonForge-1.0.3-macos-universal.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-macos-universal.zip) |
-| **Windows** (10/11) | **ZIP Executable** | x86_64 (64-bit Standalone) | [PhotonForge-1.0.3-windows-x64.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-windows-x64.zip) |
-| **Linux** | **tar.gz Archive** | x86_64 (glibc 2.17+) | [PhotonForge-1.0.3-linux-x86_64.tar.gz](https://github.com/pietini69/photonforge/releases/download/v1.0.3/PhotonForge-1.0.3-linux-x86_64.tar.gz) |
+| **macOS** (11.0+) | **DMG Installer** | Universal 2 (Apple Silicon M1–M4 + Intel) | [PhotonForge-1.0.4-universal.dmg](https://github.com/pietini69/photonforge/releases/download/v1.0.4/PhotonForge-1.0.4-universal.dmg) |
+| **macOS** (11.0+) | **ZIP Archive** | Universal 2 | [PhotonForge-1.0.4-macos-universal.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.4/PhotonForge-1.0.4-macos-universal.zip) |
+| **Windows** (10/11) | **ZIP Executable** | x86_64 (64-bit Standalone) | [PhotonForge-1.0.4-windows-x64.zip](https://github.com/pietini69/photonforge/releases/download/v1.0.4/PhotonForge-1.0.4-windows-x64.zip) |
+| **Linux** | **tar.gz Archive** | x86_64 (glibc 2.17+) | [PhotonForge-1.0.4-linux-x86_64.tar.gz](https://github.com/pietini69/photonforge/releases/download/v1.0.4/PhotonForge-1.0.4-linux-x86_64.tar.gz) |
 
 > **macOS First Launch Note:** If macOS Gatekeeper flags the app as unsigned, right-click `PhotonForge.app` in `/Applications` and select **Open**, or run:
 > ```bash

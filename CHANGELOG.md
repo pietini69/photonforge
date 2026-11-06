@@ -2,6 +2,21 @@
 
 All notable changes to **PhotonForge** are documented in this file.
 
+## [1.0.4] - 2026-11-06
+
+### Added & Improved
+- **Direct ASCOM Alpaca Live Stacking & Continuous Camera Capture:**
+  - Automated continuous camera exposure loop for ZWO Seestar (S50/S50 Pro/S30/S30 Pro) and ASCOM Alpaca mounts.
+  - Automatically commands exposure start, polls exposure completion (`imageready`), fetches 16-bit raw sensor data (`imagearray`), and writes 100% compliant FITS files with full headers (`BITPIX=16`, `BZERO=32768`, `BAYERPAT=GRBG`, `NAXIS1=1920`, `NAXIS2=1080`).
+  - Automatically feeds each captured sub-frame directly into PhotonForge's Live Stacker engine in real-time.
+  - Automatic dithering coordination between sub-exposures.
+  - Clean `camera/0/stopexposure` handling upon stopping stacking.
+- **Customizable Sub-Exposure Time Controls:**
+  - Quick sub-exposure duration buttons (`[10s]` `[20s]` `[30s]` `[60s]`) plus custom slider (`1..=300s`) in Telescope sidebar and Live Stacking tab.
+  - Per-target sub-exposure duration setting in the Night Sequencer and target display cards.
+- **Dual Imaging Workflow Support:**
+  - Full support for both direct standalone Alpaca camera capturing and traditional Seestar mobile app capture with quick `📂 Open Seestar Network Share (EMMC Images)` launcher.
+
 ## [1.0.3] - 2026-11-04
 
 ### Added & Improved
