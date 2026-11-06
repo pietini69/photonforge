@@ -139,6 +139,14 @@ DESCRIPTION_HTML = f"""
 
 def find_existing_product_id():
     """Find existing product ID for custom_permalink 'photonforge' if present."""
+    if os.path.exists(TRACKER_FILE):
+        try:
+            with open(TRACKER_FILE, "r") as tf:
+                tracker = json.load(tf)
+            if "PhotonForge" in tracker and "id" in tracker["PhotonForge"]:
+                return tracker["PhotonForge"]["id"]
+        except Exception:
+            pass
     try:
         res = subprocess.run(["gumroad", "products", "list", "--json"], capture_output=True, text=True)
         if res.returncode == 0:
