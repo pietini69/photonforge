@@ -1,5 +1,6 @@
 use super::catalog::SkyObject;
 use super::coordinates::{ra_dec_to_alt_az, DEFAULT_LATITUDE_DEG, DEFAULT_LONGITUDE_DEG};
+pub use super::seestar::FilterChoice;
 use super::seestar::{DitherConfig, SeestarClient, SeestarState};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,183 @@ impl JobStatus {
             JobStatus::Completed => "Valmis",
             JobStatus::Skipped => "Ohitettu",
             JobStatus::Failed => "Epäonnistui",
+        }
+    }
+}
+
+/// Exposure Frame Type for N.I.N.A.-style Sequencer (Light vs Calibration frames)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FrameType {
+    Light,
+    Dark,
+    Flat,
+    Bias,
+}
+
+impl FrameType {
+    pub fn display_fi(&self) -> &'static str {
+        match self {
+            FrameType::Light => "Light (Kohde)",
+            FrameType::Dark => "Dark (Pimeä)",
+            FrameType::Flat => "Flat (Tasakenttä)",
+            FrameType::Bias => "Bias (Lukukohina)",
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn display_en(&self) -> &'static str {
+        match self {
+            FrameType::Light => "Light (Target)",
+            FrameType::Dark => "Dark (Calibration)",
+            FrameType::Flat => "Flat (Field)",
+            FrameType::Bias => "Bias (Readout)",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            FrameType::Light => "✨",
+            FrameType::Dark => "🌑",
+            FrameType::Flat => "⬜",
+            FrameType::Bias => "⚡",
+        }
+    }
+}
+
+/// N.I.N.A.-Style Modular Sequence Step
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SequenceStep {
+    /// Ajo kohteeseen (GoTo / Slew)
+    SlewToTarget {
+        name: String,
+        ra_hours: f64,
+        dec_deg: f64,
+        solve_and_center: bool,
+        min_altitude_deg: f64,
+    },
+    /// Valotussarja (Exposures block)
+    TakeExposures {
+        frame_type: FrameType,
+        exposure_secs: u32,
+        count: u32,
+        dither_every_n: Option<u32>,
+    },
+    /// Automaattitarkennus (Auto-Focus)
+    AutoFocus {
+        reason: String,
+    },
+    /// Kiinteä tarkennusasento (Set Focuser Position)
+    SetFocuserPosition {
+        position: u32,
+    },
+    /// Suotimen asetus (Set Filter)
+    SetFilter {
+        filter: FilterChoice,
+    },
+    /// Odotusaika / Tauko (Wait / Pause)
+    WaitSeconds {
+        seconds: u32,
+        reason: String,
+    },
+    /// Kaukoputken ajo lepoasentoon (Park Telescope)
+    Park,
+}
+
+/// A single manageable item in the N.I.N.A. Sequence List
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SequenceItem {
+    pub id: usize,
+    pub enabled: bool,
+    pub step: SequenceStep,
+    pub status: JobStatus,
+    pub progress_str: String,
+    pub elapsed_seconds: u32,
+}
+
+impl SequenceItem {
+    pub fn new(id: usize, step: SequenceStep) -> Self {
+        Self {
+            id,
+            enabled: true,
+            step,
+            status: JobStatus::Pending,
+            progress_str: String::new(),
+            elapsed_seconds: 0,
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match &self.step {
+            SequenceStep::SlewToTarget { .. } => "🎯",
+            SequenceStep::TakeExposures { frame_type, .. } => frame_type.icon(),
+            SequenceStep::AutoFocus { .. } => "🔍",
+            SequenceStep::SetFocuserPosition { .. } => "🎛",
+            SequenceStep::SetFilter { .. } => "🛡",
+            SequenceStep::WaitSeconds { .. } => "⏳",
+            SequenceStep::Park => "🏠",
+        }
+    }
+
+    pub fn type_name_fi(&self) -> &'static str {
+        match &self.step {
+            SequenceStep::SlewToTarget { .. } => "Ajo kohteeseen",
+            SequenceStep::TakeExposures { frame_type, .. } => frame_type.display_fi(),
+            SequenceStep::AutoFocus { .. } => "Automaattitarkennus",
+            SequenceStep::SetFocuserPosition { .. } => "Tarkennusasento",
+            SequenceStep::SetFilter { .. } => "Suodatin",
+            SequenceStep::WaitSeconds { .. } => "Odotus",
+            SequenceStep::Park => "Parkkiasento",
+        }
+    }
+
+    pub fn title(&self) -> String {
+        match &self.step {
+            SequenceStep::SlewToTarget { name, .. } => {
+                format!("Ajo: {}", name)
+            }
+            SequenceStep::TakeExposures { frame_type, exposure_secs, count, .. } => {
+                let total_s = exposure_secs * count;
+                format!(
+                    "{} {} × {}s ({} min)",
+                    frame_type.display_fi(),
+                    count,
+                    exposure_secs,
+                    (total_s + 59) / 60
+                )
+            }
+            SequenceStep::AutoFocus { reason } => {
+                if reason.is_empty() {
+                    "Automaattitarkennus".to_string()
+                } else {
+                    format!("Automaattitarkennus ({})", reason)
+                }
+            }
+            SequenceStep::SetFocuserPosition { position } => {
+                format!("Aseta tarkennus: askel {}", position)
+            }
+            SequenceStep::SetFilter { filter } => {
+                format!("Suodatin: {}", filter.display_fi())
+            }
+            SequenceStep::WaitSeconds { seconds, reason } => {
+                if reason.is_empty() {
+                    format!("Odotus: {}s", seconds)
+                } else {
+                    format!("Odotus: {}s ({})", seconds, reason)
+                }
+            }
+            SequenceStep::Park => "Aja kaukoputki parkkiin".to_string(),
+        }
+    }
+
+    pub fn estimated_duration_secs(&self) -> u32 {
+        match &self.step {
+            SequenceStep::SlewToTarget { .. } => 35,
+            SequenceStep::TakeExposures { exposure_secs, count, .. } => exposure_secs * count,
+            SequenceStep::AutoFocus { .. } => 45,
+            SequenceStep::SetFocuserPosition { .. } => 5,
+            SequenceStep::SetFilter { .. } => 3,
+            SequenceStep::WaitSeconds { seconds, .. } => *seconds,
+            SequenceStep::Park => 15,
         }
     }
 }
@@ -103,27 +281,99 @@ pub struct SequenceTarget {
 pub struct SequencerState {
     pub is_running: bool,
     pub current_job_idx: Option<usize>,
+    pub current_item_idx: Option<usize>,
     pub current_step_description: String,
     pub auto_park_at_end: bool,
     pub autofocus_config: AutoFocusConfig,
     pub dither_config: DitherConfig,
     pub connection_guard: ConnectionGuardConfig,
-    #[allow(dead_code)]
     pub default_sub_exposure_secs: u32,
     pub af_runs_count: u32,
     pub dithers_count: u32,
     pub reconnect_events_count: u32,
     pub last_af_temp_c: Option<f32>,
     pub minutes_since_last_af: u32,
+    pub items: Vec<SequenceItem>,
     pub targets: Vec<SequenceTarget>,
     pub logs: Vec<String>,
 }
 
 impl Default for SequencerState {
     fn default() -> Self {
+        let targets = vec![
+            SequenceTarget {
+                id: 1,
+                name: "M45 Plejadit".to_string(),
+                constellation: "Tau".to_string(),
+                ra_hours: 3.79,
+                dec_deg: 24.11,
+                duration_minutes: 60,
+                sub_exposure_secs: 10,
+                min_altitude_deg: 25.0,
+                use_lp_filter: false,
+                status: JobStatus::Pending,
+                elapsed_seconds: 0,
+            },
+            SequenceTarget {
+                id: 2,
+                name: "M42 Orionin suuri kaasusumu".to_string(),
+                constellation: "Ori".to_string(),
+                ra_hours: 5.59,
+                dec_deg: -5.39,
+                duration_minutes: 90,
+                sub_exposure_secs: 10,
+                min_altitude_deg: 20.0,
+                use_lp_filter: true,
+                status: JobStatus::Pending,
+                elapsed_seconds: 0,
+            },
+        ];
+
+        let items = vec![
+            SequenceItem::new(1, SequenceStep::SlewToTarget {
+                name: "M45 Plejadit".to_string(),
+                ra_hours: 3.79,
+                dec_deg: 24.11,
+                solve_and_center: true,
+                min_altitude_deg: 25.0,
+            }),
+            SequenceItem::new(2, SequenceStep::SetFilter {
+                filter: FilterChoice::Normal,
+            }),
+            SequenceItem::new(3, SequenceStep::AutoFocus {
+                reason: "M45 alustus".to_string(),
+            }),
+            SequenceItem::new(4, SequenceStep::TakeExposures {
+                frame_type: FrameType::Light,
+                exposure_secs: 10,
+                count: 360,
+                dither_every_n: Some(3),
+            }),
+            SequenceItem::new(5, SequenceStep::SlewToTarget {
+                name: "M42 Orionin suuri kaasusumu".to_string(),
+                ra_hours: 5.59,
+                dec_deg: -5.39,
+                solve_and_center: true,
+                min_altitude_deg: 20.0,
+            }),
+            SequenceItem::new(6, SequenceStep::SetFilter {
+                filter: FilterChoice::LightPollution,
+            }),
+            SequenceItem::new(7, SequenceStep::AutoFocus {
+                reason: "M42 suotimen vaihto".to_string(),
+            }),
+            SequenceItem::new(8, SequenceStep::TakeExposures {
+                frame_type: FrameType::Light,
+                exposure_secs: 10,
+                count: 540,
+                dither_every_n: Some(3),
+            }),
+        ];
+
         Self {
             is_running: false,
             current_job_idx: None,
+            current_item_idx: None,
             current_step_description: "Sekvensseri valmiina.".to_string(),
             auto_park_at_end: true,
             autofocus_config: AutoFocusConfig::default(),
@@ -135,36 +385,10 @@ impl Default for SequencerState {
             reconnect_events_count: 0,
             last_af_temp_c: None,
             minutes_since_last_af: 0,
-            targets: vec![
-                SequenceTarget {
-                    id: 1,
-                    name: "M45 Plejadit".to_string(),
-                    constellation: "Tau".to_string(),
-                    ra_hours: 3.79,
-                    dec_deg: 24.11,
-                    duration_minutes: 60,
-                    sub_exposure_secs: 10,
-                    min_altitude_deg: 25.0,
-                    use_lp_filter: false,
-                    status: JobStatus::Pending,
-                    elapsed_seconds: 0,
-                },
-                SequenceTarget {
-                    id: 2,
-                    name: "M42 Orionin suuri kaasusumu".to_string(),
-                    constellation: "Ori".to_string(),
-                    ra_hours: 5.59,
-                    dec_deg: -5.39,
-                    duration_minutes: 90,
-                    sub_exposure_secs: 10,
-                    min_altitude_deg: 20.0,
-                    use_lp_filter: true,
-                    status: JobStatus::Pending,
-                    elapsed_seconds: 0,
-                },
-            ],
+            items,
+            targets,
             logs: vec![
-                format!("[{}] Yösekvensseri alustettu (Ditheröinti, Auto-Focus ja Yhteysvahti valmiina).", Utc::now().format("%H:%M:%S")),
+                format!("[{}] Yösekvensseri alustettu (N.I.N.A.-tyylinen modulaarinen suorituslista, Ditheröinti ja Yhteysvahti valmiina).", Utc::now().format("%H:%M:%S")),
             ],
         }
     }
@@ -187,6 +411,86 @@ impl NightSequencer {
             state: Arc::new(Mutex::new(SequencerState::default())),
             cancel_signal: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Add a modular SequenceStep directly to the sequence list
+    pub fn add_item(&self, step: SequenceStep) -> usize {
+        let mut s = self.state.lock().unwrap();
+        let next_id = s.items.len() + 1;
+        let item = SequenceItem::new(next_id, step);
+        s.logs.push(format!("[{}] Lisätty sekvenssiin: {}", Utc::now().format("%H:%M:%S"), item.title()));
+        s.items.push(item);
+        s.items.len() - 1
+    }
+
+    /// Alias for add_item
+    #[allow(dead_code)]
+    pub fn add_step(&self, step: SequenceStep) -> usize {
+        self.add_item(step)
+    }
+
+    /// Remove a sequence item by index
+    pub fn remove_item(&self, idx: usize) {
+        let mut s = self.state.lock().unwrap();
+        if idx < s.items.len() {
+            let removed = s.items.remove(idx);
+            s.logs.push(format!("[{}] Poistettu sekvenssistä: {}", Utc::now().format("%H:%M:%S"), removed.title()));
+        }
+    }
+
+    /// Move sequence item up by one position
+    pub fn move_item_up(&self, idx: usize) {
+        let mut s = self.state.lock().unwrap();
+        if idx > 0 && idx < s.items.len() {
+            s.items.swap(idx, idx - 1);
+        }
+    }
+
+    /// Move sequence item down by one position
+    pub fn move_item_down(&self, idx: usize) {
+        let mut s = self.state.lock().unwrap();
+        if idx + 1 < s.items.len() {
+            s.items.swap(idx, idx + 1);
+        }
+    }
+
+    /// Duplicate an item in place
+    pub fn duplicate_item(&self, idx: usize) {
+        let mut s = self.state.lock().unwrap();
+        if idx < s.items.len() {
+            let mut dup = s.items[idx].clone();
+            dup.id = s.items.len() + 1;
+            dup.status = JobStatus::Pending;
+            dup.elapsed_seconds = 0;
+            dup.progress_str.clear();
+            s.items.insert(idx + 1, dup);
+        }
+    }
+
+    /// Toggle enabled state of an item
+    pub fn toggle_item(&self, idx: usize) {
+        let mut s = self.state.lock().unwrap();
+        if idx < s.items.len() {
+            s.items[idx].enabled = !s.items[idx].enabled;
+        }
+    }
+
+    /// Adds a dedicated Dark Calibration frames sequence (Filter: Dark -> Exposures -> Filter: Normal)
+    pub fn add_dark_calibration_sequence(&self, exposure_secs: u32, count: u32) {
+        let mut s = self.state.lock().unwrap();
+        let id_start = s.items.len() + 1;
+        s.items.push(SequenceItem::new(id_start, SequenceStep::SetFilter { filter: FilterChoice::Dark }));
+        s.items.push(SequenceItem::new(id_start + 1, SequenceStep::TakeExposures {
+            frame_type: FrameType::Dark,
+            exposure_secs,
+            count,
+            dither_every_n: None,
+        }));
+        s.items.push(SequenceItem::new(id_start + 2, SequenceStep::SetFilter { filter: FilterChoice::Normal }));
+        s.logs.push(format!(
+            "[{}] Lisätty pimeäkuvien (Dark) kalibrointisarja: {} × {}s",
+            Utc::now().format("%H:%M:%S"), count, exposure_secs
+        ));
     }
 
     #[allow(dead_code)]
@@ -212,26 +516,50 @@ impl NightSequencer {
             let clean_name = obj.name.split('/').next().unwrap_or(&obj.name).trim();
             format!("{} {}", obj.id, clean_name)
         };
+        let sub_exp = sub_exposure_secs.clamp(1, 300);
+
+        // Keep legacy targets synchronized
         s.targets.push(SequenceTarget {
             id: next_id,
-            name,
+            name: name.clone(),
             constellation: obj.constellation.clone(),
             ra_hours: obj.ra_hours,
             dec_deg: obj.dec_deg,
             duration_minutes,
-            sub_exposure_secs: sub_exposure_secs.clamp(1, 300),
+            sub_exposure_secs: sub_exp,
             min_altitude_deg: 20.0,
             use_lp_filter: use_lp,
             status: JobStatus::Pending,
             elapsed_seconds: 0,
         });
+
+        // Add modular steps to items list
+        let filter = if use_lp { FilterChoice::LightPollution } else { FilterChoice::Normal };
+        let count = ((duration_minutes * 60) / sub_exp).max(1);
+        let step_start = s.items.len() + 1;
+
+        s.items.push(SequenceItem::new(step_start, SequenceStep::SlewToTarget {
+            name: name.clone(),
+            ra_hours: obj.ra_hours,
+            dec_deg: obj.dec_deg,
+            solve_and_center: true,
+            min_altitude_deg: 20.0,
+        }));
+        s.items.push(SequenceItem::new(step_start + 1, SequenceStep::SetFilter { filter }));
+        s.items.push(SequenceItem::new(step_start + 2, SequenceStep::AutoFocus { reason: name.clone() }));
+        s.items.push(SequenceItem::new(step_start + 3, SequenceStep::TakeExposures {
+            frame_type: FrameType::Light,
+            exposure_secs: sub_exp,
+            count,
+            dither_every_n: Some(3),
+        }));
+
         s.logs.push(format!(
-            "[{}] Lisätty sekvenssiin: {} ({} min, {}s valotus, {})",
+            "[{}] Lisätty kohteelle {} modulaarinen kuvaussarja (Ajo -> Suodin -> AF -> {} × {}s Light)",
             Utc::now().format("%H:%M:%S"),
-            obj.id,
-            duration_minutes,
-            sub_exposure_secs,
-            if use_lp { "LP-suodatin" } else { "Normaali" }
+            name,
+            count,
+            sub_exp
         ));
     }
 
@@ -240,8 +568,29 @@ impl NightSequencer {
         let next_id = s.targets.len() + 1;
         let mut t = target;
         t.id = next_id;
+
+        let filter = if t.use_lp_filter { FilterChoice::LightPollution } else { FilterChoice::Normal };
+        let count = ((t.duration_minutes * 60) / t.sub_exposure_secs.max(1)).max(1);
+        let step_start = s.items.len() + 1;
+
+        s.items.push(SequenceItem::new(step_start, SequenceStep::SlewToTarget {
+            name: t.name.clone(),
+            ra_hours: t.ra_hours,
+            dec_deg: t.dec_deg,
+            solve_and_center: true,
+            min_altitude_deg: t.min_altitude_deg,
+        }));
+        s.items.push(SequenceItem::new(step_start + 1, SequenceStep::SetFilter { filter }));
+        s.items.push(SequenceItem::new(step_start + 2, SequenceStep::AutoFocus { reason: t.name.clone() }));
+        s.items.push(SequenceItem::new(step_start + 3, SequenceStep::TakeExposures {
+            frame_type: FrameType::Light,
+            exposure_secs: t.sub_exposure_secs,
+            count,
+            dither_every_n: Some(3),
+        }));
+
         s.logs.push(format!(
-            "[{}] Lisätty sekvenssiin: {} ({} min, {})",
+            "[{}] Lisätty sekvenssiin kohde: {} ({} min, {})",
             Utc::now().format("%H:%M:%S"),
             t.name,
             t.duration_minutes,
@@ -250,17 +599,19 @@ impl NightSequencer {
         s.targets.push(t);
     }
 
+    #[allow(dead_code)]
     pub fn remove_target(&self, idx: usize) {
         let mut s = self.state.lock().unwrap();
         if idx < s.targets.len() {
             let removed = s.targets.remove(idx);
-            s.logs.push(format!("[{}] Poistettu sekvenssistä: {}", Utc::now().format("%H:%M:%S"), removed.name));
+            s.logs.push(format!("[{}] Poistettu kohteista: {}", Utc::now().format("%H:%M:%S"), removed.name));
         }
     }
 
     pub fn clear_all(&self) {
         let mut s = self.state.lock().unwrap();
         s.targets.clear();
+        s.items.clear();
         s.logs.push(format!("[{}] Kuvauslista tyhjennetty.", Utc::now().format("%H:%M:%S")));
     }
 
@@ -270,7 +621,7 @@ impl NightSequencer {
         state_clone: &Arc<Mutex<SequencerState>>,
         cancel_clone: &Arc<AtomicBool>,
         client: &Arc<SeestarClient>,
-        job_idx: usize,
+        item_idx: Option<usize>,
         grace_mins: u32,
     ) -> bool {
         let telem = client.get_telemetry();
@@ -283,8 +634,13 @@ impl NightSequencer {
         {
             let mut s = state_clone.lock().unwrap();
             s.reconnect_events_count += 1;
-            if job_idx < s.targets.len() {
-                s.targets[job_idx].status = JobStatus::WaitingConnection;
+            if let Some(idx) = item_idx {
+                if idx < s.items.len() {
+                    s.items[idx].status = JobStatus::WaitingConnection;
+                }
+                if idx < s.targets.len() {
+                    s.targets[idx].status = JobStatus::WaitingConnection;
+                }
             }
             s.current_step_description = format!(
                 "⚠ Yhteys katkesi! Odotetaan yhteyden palautumista (armonaika {} min)...",
@@ -297,7 +653,6 @@ impl NightSequencer {
             ));
         }
 
-        // Ensure auto-reconnect is triggered if client was in Disconnected state
         if telem.state == SeestarState::Disconnected {
             client.connect(&telem.ip_address);
         }
@@ -334,7 +689,7 @@ impl NightSequencer {
 
         let mut s = state_clone.lock().unwrap();
         s.logs.push(format!(
-            "[{}] ❌ Yhteyskatkos kesti yli armonajan ({} min). Keskeytetään kohde turvallisesti.",
+            "[{}] ❌ Yhteyskatkos kesti yli armonajan ({} min). Keskeytetään toiminto turvallisesti.",
             Utc::now().format("%H:%M:%S"),
             grace_mins
         ));
@@ -346,13 +701,18 @@ impl NightSequencer {
         state_clone: &Arc<Mutex<SequencerState>>,
         cancel_clone: &Arc<AtomicBool>,
         client: &Arc<SeestarClient>,
-        job_idx: usize,
+        item_idx: Option<usize>,
         reason: &str,
     ) -> Option<f32> {
         {
             let mut s = state_clone.lock().unwrap();
-            if job_idx < s.targets.len() {
-                s.targets[job_idx].status = JobStatus::Focusing;
+            if let Some(idx) = item_idx {
+                if idx < s.items.len() {
+                    s.items[idx].status = JobStatus::Focusing;
+                }
+                if idx < s.targets.len() {
+                    s.targets[idx].status = JobStatus::Focusing;
+                }
             }
             s.current_step_description = format!("🔍 Automaattitarkennus käynnissä ({})...", reason);
             s.logs.push(format!(
@@ -364,7 +724,6 @@ impl NightSequencer {
 
         client.auto_focus();
 
-        // Wait up to 90s for focusing to complete
         let af_wait_start = Instant::now();
         thread::sleep(Duration::from_millis(400));
         while af_wait_start.elapsed().as_secs() < 90 {
@@ -397,17 +756,46 @@ impl NightSequencer {
         Some(telem.temp_c)
     }
 
+    /// Starts N.I.N.A.-Style execution loop over all items in the sequence list
     pub fn start(&self, client: Arc<SeestarClient>) {
         let mut s = self.state.lock().unwrap();
         if s.is_running {
             return;
         }
-        if s.targets.is_empty() {
-            s.logs.push(format!("[{}] Ei kohteita sekvenssissä!", Utc::now().format("%H:%M:%S")));
+
+        // If items are empty but targets exist, convert targets to items
+        if s.items.is_empty() && !s.targets.is_empty() {
+            let targets = s.targets.clone();
+            s.items.clear();
+            for t in targets {
+                let filter = if t.use_lp_filter { FilterChoice::LightPollution } else { FilterChoice::Normal };
+                let count = ((t.duration_minutes * 60) / t.sub_exposure_secs.max(1)).max(1);
+                let step_start = s.items.len() + 1;
+                s.items.push(SequenceItem::new(step_start, SequenceStep::SlewToTarget {
+                    name: t.name.clone(),
+                    ra_hours: t.ra_hours,
+                    dec_deg: t.dec_deg,
+                    solve_and_center: true,
+                    min_altitude_deg: t.min_altitude_deg,
+                }));
+                s.items.push(SequenceItem::new(step_start + 1, SequenceStep::SetFilter { filter }));
+                s.items.push(SequenceItem::new(step_start + 2, SequenceStep::AutoFocus { reason: t.name.clone() }));
+                s.items.push(SequenceItem::new(step_start + 3, SequenceStep::TakeExposures {
+                    frame_type: FrameType::Light,
+                    exposure_secs: t.sub_exposure_secs,
+                    count,
+                    dither_every_n: Some(3),
+                }));
+            }
+        }
+
+        if s.items.is_empty() {
+            s.logs.push(format!("[{}] Kuvauslista on tyhjä, ei toimintoja suoritettavaksi!", Utc::now().format("%H:%M:%S")));
             return;
         }
 
         s.is_running = true;
+        s.current_item_idx = Some(0);
         s.current_job_idx = Some(0);
         s.af_runs_count = 0;
         s.dithers_count = 0;
@@ -415,9 +803,11 @@ impl NightSequencer {
         let af_on = s.autofocus_config.enabled;
         let dither_on = s.dither_config.enabled;
         let guard_on = s.connection_guard.auto_reconnect;
+        let items_count = s.items.len();
         s.logs.push(format!(
-            "[{}] ▶ YÖAJO KÄYNNISTETTY! (AF: {}, Dither: {}, Yhteysvahti: {})",
+            "[{}] ▶ N.I.N.A.-YÖAJO KÄYNNISTETTY! (Toimintoja: {}, AF: {}, Dither: {}, Yhteysvahti: {})",
             Utc::now().format("%H:%M:%S"),
+            items_count,
             if af_on { "PÄÄLLÄ" } else { "POIS" },
             if dither_on { "PÄÄLLÄ" } else { "POIS" },
             if guard_on { "PÄÄLLÄ" } else { "POIS" }
@@ -434,317 +824,360 @@ impl NightSequencer {
         let cancel_clone = Arc::clone(&self.cancel_signal);
 
         thread::spawn(move || {
-            let total_targets = {
+            let total_items = {
                 let s = state_clone.lock().unwrap();
-                s.targets.len()
+                s.items.len()
             };
 
-            let mut last_af_instant = Instant::now();
-            let mut last_af_temp_c = client.get_telemetry().temp_c;
+            let mut _last_af_instant = Instant::now();
+            let mut _last_af_temp_c = client.get_telemetry().temp_c;
 
-            for i in 0..total_targets {
+            for i in 0..total_items {
                 if cancel_clone.load(Ordering::SeqCst) {
                     break;
                 }
 
-                // 1. Prepare target & read current automation settings
-                let (target_name, ra, dec, duration_mins, min_alt, use_lp, af_cfg, dither_cfg, conn_guard) = {
+                // 1. Prepare item
+                let (enabled, step, conn_guard, dither_cfg, _af_cfg) = {
                     let mut s = state_clone.lock().unwrap();
+                    s.current_item_idx = Some(i);
                     s.current_job_idx = Some(i);
-                    s.targets[i].status = JobStatus::Pending;
-                    s.targets[i].elapsed_seconds = 0;
-                    let t = &s.targets[i];
-                    (
-                        t.name.clone(),
-                        t.ra_hours,
-                        t.dec_deg,
-                        t.duration_minutes,
-                        t.min_altitude_deg,
-                        t.use_lp_filter,
-                        s.autofocus_config,
-                        s.dither_config,
-                        s.connection_guard,
-                    )
+                    if i < s.items.len() {
+                        let is_en = s.items[i].enabled;
+                        if !is_en {
+                            s.items[i].status = JobStatus::Skipped;
+                        } else {
+                            s.items[i].status = JobStatus::Pending;
+                            s.items[i].elapsed_seconds = 0;
+                        }
+                        (is_en, s.items[i].step.clone(), s.connection_guard, s.dither_config, s.autofocus_config)
+                    } else {
+                        break;
+                    }
                 };
 
-                // Ensure connection is healthy before starting target
-                if !Self::wait_for_connection(&state_clone, &cancel_clone, &client, i, conn_guard.grace_period_minutes) {
+                if !enabled {
+                    continue;
+                }
+
+                // Ensure connection is healthy before starting step
+                if !Self::wait_for_connection(&state_clone, &cancel_clone, &client, Some(i), conn_guard.grace_period_minutes) {
                     let mut s = state_clone.lock().unwrap();
-                    s.targets[i].status = if cancel_clone.load(Ordering::SeqCst) {
-                        JobStatus::Skipped
-                    } else {
-                        JobStatus::Failed
-                    };
+                    if i < s.items.len() {
+                        s.items[i].status = if cancel_clone.load(Ordering::SeqCst) {
+                            JobStatus::Skipped
+                        } else {
+                            JobStatus::Failed
+                        };
+                    }
                     break;
                 }
 
-                // Synchronize dither & auto-reconnect settings to client
                 client.configure_dither(dither_cfg);
                 client.set_auto_reconnect(conn_guard.auto_reconnect);
 
-                // Check altitude
-                let now_utc = Utc::now();
-                let (current_alt, _) = ra_dec_to_alt_az(ra, dec, DEFAULT_LATITUDE_DEG, DEFAULT_LONGITUDE_DEG, &now_utc);
-                if current_alt < min_alt {
-                    let mut s = state_clone.lock().unwrap();
-                    s.logs.push(format!(
-                        "[{}] Varoitus: Kohde {} on alle minimikorkeuden ({:.1}° < {:.1}°), siirrytään kohteeseen silti.",
-                        Utc::now().format("%H:%M:%S"), target_name, current_alt, min_alt
-                    ));
-                }
-
-                // 2. Set filter deterministically
-                client.set_lp_filter(use_lp);
-
-                // 3. Slew & GoTo
-                {
-                    let mut s = state_clone.lock().unwrap();
-                    s.targets[i].status = JobStatus::Slewing;
-                    s.current_step_description = format!("Käännytään kohteeseen {}...", target_name);
-                    s.logs.push(format!("[{}] GoTo: Käännytään kohteeseen {}...", Utc::now().format("%H:%M:%S"), target_name));
-                }
-                client.goto_target(&target_name, ra, dec);
-
-                // Wait for slew & plate solving
-                for _ in 0..90 {
-                    if cancel_clone.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    thread::sleep(Duration::from_millis(200));
-                    let telem = client.get_telemetry();
-                    if telem.state == SeestarState::Solving {
-                        let mut s = state_clone.lock().unwrap();
-                        s.targets[i].status = JobStatus::Solving;
-                        s.current_step_description = format!("Kenttätunnistus (Plate Solving): {}...", target_name);
-                    } else if telem.state == SeestarState::Tracking {
-                        break;
-                    }
-                }
-
-                if cancel_clone.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                // 4. Auto-Focus on Target Start (if enabled)
-                if af_cfg.enabled && af_cfg.on_target_start {
-                    if let Some(new_temp) = Self::execute_autofocus(
-                        &state_clone,
-                        &cancel_clone,
-                        &client,
-                        i,
-                        &format!("uusi kohde: {}", target_name),
-                    ) {
-                        last_af_temp_c = new_temp;
-                        last_af_instant = Instant::now();
-                    }
-                }
-
-                if cancel_clone.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                // 5. Start Stacking with Target-specific Sub-exposure Time
-                let target_sub_exp = {
-                    let mut s = state_clone.lock().unwrap();
-                    let exp = s.targets[i].sub_exposure_secs.max(1);
-                    s.targets[i].status = JobStatus::Stacking;
-                    s.current_step_description = format!("Valottaa ja pinoaa kohdetta {} ({}s osavalotuksin, kesto {} min)...", target_name, exp, duration_mins);
-                    s.logs.push(format!("[{}] ▶ Aloitetaan pinoaminen: {} ({} min, {}s osavalotus)", Utc::now().format("%H:%M:%S"), target_name, duration_mins, exp));
-                    exp
-                };
-                client.set_exposure_time(target_sub_exp);
-                client.start_stacking();
-
-                // 6. Resilient Active Stacking Loop (handles periodic AF, dithering, and connection drops)
-                let target_duration_secs = duration_mins * 60;
-                let mut accumulated_stack_secs: u32 = 0;
-                let mut last_dithered_frame: u32 = 0;
-                let mut target_failed = false;
-
-                while accumulated_stack_secs < target_duration_secs {
-                    if cancel_clone.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    thread::sleep(Duration::from_secs(1));
-
-                    let telem = client.get_telemetry();
-                    let (cur_af_cfg, cur_dither_cfg, cur_conn_guard) = {
-                        let mut s = state_clone.lock().unwrap();
-                        s.minutes_since_last_af = (last_af_instant.elapsed().as_secs() / 60) as u32;
-                        (s.autofocus_config, s.dither_config, s.connection_guard)
-                    };
-
-                    // A. Connection Health Check & Recovery
-                    if !telem.connected && !telem.is_simulation {
-                        let outage_clock = Instant::now();
-                        if !Self::wait_for_connection(
-                            &state_clone,
-                            &cancel_clone,
-                            &client,
-                            i,
-                            cur_conn_guard.grace_period_minutes,
-                        ) {
-                            target_failed = true;
-                            break;
-                        }
-
-                        // Connection recovered! Reconcile telescope state
-                        let recovered_telem = client.get_telemetry();
-                        let outage_secs = outage_clock.elapsed().as_secs() as u32;
-                        if recovered_telem.state == SeestarState::Stacking {
-                            // Seestar kept stacking autonomously during the Wi-Fi drop
-                            accumulated_stack_secs = (accumulated_stack_secs + outage_secs).min(target_duration_secs);
-                            let mut s = state_clone.lock().unwrap();
-                            s.targets[i].status = JobStatus::Stacking;
-                            s.logs.push(format!(
-                                "[{}] 🛡 Tila täsmäytetty: Seestar jatkoi pinoamista itsenäisesti katkoksen ajan (+{}s).",
-                                Utc::now().format("%H:%M:%S"),
-                                outage_secs
-                            ));
-                        } else if cur_conn_guard.resume_stacking_after_reconnect {
-                            // Scope dropped out of stacking; re-issue start_stacking
-                            client.start_stacking();
-                            let mut s = state_clone.lock().unwrap();
-                            s.targets[i].status = JobStatus::Stacking;
-                            s.logs.push(format!(
-                                "[{}] 🔄 Pinoaminen käynnistetty automaattisesti uudelleen yhteyskatkoksen jälkeen.",
-                                Utc::now().format("%H:%M:%S")
-                            ));
-                        }
-                        continue;
-                    }
-
-                    let remaining_secs = target_duration_secs.saturating_sub(accumulated_stack_secs);
-
-                    // B. Periodic / Temperature-Delta Auto-Focus Check (only if > 2 min remaining on target)
-                    if cur_af_cfg.enabled && remaining_secs > 120 {
-                        let time_elapsed_mins = (last_af_instant.elapsed().as_secs() / 60) as u32;
-                        let time_triggered = cur_af_cfg.use_time_trigger
-                            && cur_af_cfg.interval_minutes > 0
-                            && time_elapsed_mins >= cur_af_cfg.interval_minutes;
-
-                        let temp_delta = (telem.temp_c - last_af_temp_c).abs();
-                        let temp_triggered = cur_af_cfg.use_temp_trigger
-                            && cur_af_cfg.temp_delta_c > 0.0
-                            && temp_delta >= cur_af_cfg.temp_delta_c;
-
-                        if time_triggered || temp_triggered {
-                            let reason = if temp_triggered {
-                                format!("lämpötilamuutos ΔT {:.1} °C ≥ {:.1} °C", temp_delta, cur_af_cfg.temp_delta_c)
-                            } else {
-                                format!("aikaväli {} min täyttyi", cur_af_cfg.interval_minutes)
-                            };
-
-                            if let Some(new_temp) = Self::execute_autofocus(
-                                &state_clone,
-                                &cancel_clone,
-                                &client,
-                                i,
-                                &reason,
-                            ) {
-                                last_af_temp_c = new_temp;
-                                last_af_instant = Instant::now();
-                            }
-
-                            // Ensure stacking continues after AF
-                            client.start_stacking();
-                            let mut s = state_clone.lock().unwrap();
-                            s.targets[i].status = JobStatus::Stacking;
-                        }
-                    }
-
-                    // C. Periodic Dithering Check (every N stacked frames)
-                    if cur_dither_cfg.enabled
-                        && cur_dither_cfg.interval_frames > 0
-                        && telem.stacked_frames > last_dithered_frame
-                        && telem.stacked_frames % cur_dither_cfg.interval_frames == 0
-                        && remaining_secs > cur_dither_cfg.settle_seconds + 5
-                    {
-                        last_dithered_frame = telem.stacked_frames;
+                match step {
+                    SequenceStep::SlewToTarget { name, ra_hours, dec_deg, solve_and_center, min_altitude_deg } => {
                         {
                             let mut s = state_clone.lock().unwrap();
-                            s.dithers_count += 1;
-                            s.targets[i].status = JobStatus::Dithering;
-                            s.current_step_description = format!(
-                                "🔀 Ditheröidään (ruutu #{}, siirto {} px, asettuminen {}s)...",
-                                telem.stacked_frames, cur_dither_cfg.step_pixels, cur_dither_cfg.settle_seconds
-                            );
+                            if i < s.items.len() {
+                                s.items[i].status = JobStatus::Slewing;
+                            }
+                            s.current_step_description = format!("Käännytään kohteeseen {}...", name);
                             s.logs.push(format!(
-                                "[{}] 🔀 Ditheröinti (ruutu #{}): mikrosiirto {} px, asettuminen {}s",
-                                Utc::now().format("%H:%M:%S"),
-                                telem.stacked_frames,
-                                cur_dither_cfg.step_pixels,
-                                cur_dither_cfg.settle_seconds
+                                "[{}] GoTo: Käännytään kohteeseen {} (RA: {:.2}h, Dec: {:+.1}°)...",
+                                Utc::now().format("%H:%M:%S"), name, ra_hours, dec_deg
                             ));
                         }
 
-                        client.trigger_dither(cur_dither_cfg.step_pixels, cur_dither_cfg.settle_seconds);
+                        // Check altitude warning
+                        let now_utc = Utc::now();
+                        let (current_alt, _) = ra_dec_to_alt_az(ra_hours, dec_deg, DEFAULT_LATITUDE_DEG, DEFAULT_LONGITUDE_DEG, &now_utc);
+                        if current_alt < min_altitude_deg {
+                            let mut s = state_clone.lock().unwrap();
+                            s.logs.push(format!(
+                                "[{}] Varoitus: Kohde {} on alle minimikorkeuden ({:.1}° < {:.1}°), siirrytään kohteeseen silti.",
+                                Utc::now().format("%H:%M:%S"), name, current_alt, min_altitude_deg
+                            ));
+                        }
 
-                        // Wait for dither settling
-                        let settle_wait = if telem.is_simulation {
-                            cur_dither_cfg.settle_seconds.min(3)
+                        client.goto_target(&name, ra_hours, dec_deg);
+
+                        for _ in 0..90 {
+                            if cancel_clone.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(200));
+                            let telem = client.get_telemetry();
+                            if solve_and_center && telem.state == SeestarState::Solving {
+                                let mut s = state_clone.lock().unwrap();
+                                if i < s.items.len() {
+                                    s.items[i].status = JobStatus::Solving;
+                                }
+                                s.current_step_description = format!("Kenttätunnistus (Plate Solving): {}...", name);
+                            } else if telem.state == SeestarState::Tracking {
+                                break;
+                            }
+                        }
+
+                        let mut s = state_clone.lock().unwrap();
+                        if i < s.items.len() {
+                            s.items[i].status = if cancel_clone.load(Ordering::SeqCst) {
+                                JobStatus::Skipped
+                            } else {
+                                JobStatus::Completed
+                            };
+                        }
+                        s.logs.push(format!("[{}] ✓ Kohde valmis ja seuranta päällä: {}", Utc::now().format("%H:%M:%S"), name));
+                    }
+
+                    SequenceStep::SetFilter { filter } => {
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            s.current_step_description = format!("Asetetaan suodatin: {}...", filter.display_fi());
+                            s.logs.push(format!("[{}] 🛡 Asetetaan suodatin: {}", Utc::now().format("%H:%M:%S"), filter.display_fi()));
+                        }
+
+                        client.set_filter_choice(filter);
+                        thread::sleep(Duration::from_secs(2));
+
+                        let mut s = state_clone.lock().unwrap();
+                        if i < s.items.len() {
+                            s.items[i].status = JobStatus::Completed;
+                        }
+                        s.logs.push(format!("[{}] ✓ Suodatin asetettu: {}", Utc::now().format("%H:%M:%S"), filter.display_fi()));
+                    }
+
+                    SequenceStep::AutoFocus { reason } => {
+                        let desc_reason = if reason.is_empty() { "määrätty tarkennus".to_string() } else { reason.clone() };
+                        if let Some(new_temp) = Self::execute_autofocus(&state_clone, &cancel_clone, &client, Some(i), &desc_reason) {
+                            _last_af_temp_c = new_temp;
+                            _last_af_instant = Instant::now();
+                        }
+                        let mut s = state_clone.lock().unwrap();
+                        if i < s.items.len() {
+                            s.items[i].status = JobStatus::Completed;
+                        }
+                    }
+
+                    SequenceStep::SetFocuserPosition { position } => {
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].status = JobStatus::Focusing;
+                            }
+                            s.current_step_description = format!("Asetetaan tarkennusmoottori asentoon {}...", position);
+                            s.logs.push(format!("[{}] 🎛 Asetetaan tarkennusasento: {}", Utc::now().format("%H:%M:%S"), position));
+                        }
+
+                        client.set_focus_position(position);
+                        thread::sleep(Duration::from_secs(2));
+
+                        let mut s = state_clone.lock().unwrap();
+                        if i < s.items.len() {
+                            s.items[i].status = JobStatus::Completed;
+                        }
+                        s.logs.push(format!("[{}] ✓ Tarkennusmoottorin asento asetettu: {}", Utc::now().format("%H:%M:%S"), position));
+                    }
+
+                    SequenceStep::TakeExposures { frame_type, exposure_secs, count, dither_every_n } => {
+                        let exp_s = exposure_secs.max(1);
+                        let total_frames = count.max(1);
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].status = JobStatus::Stacking;
+                            }
+                            s.current_step_description = format!(
+                                "Valotussarja käynnissä: {} {} × {}s (yht. {} s)...",
+                                frame_type.display_fi(), total_frames, exp_s, total_frames * exp_s
+                            );
+                            s.logs.push(format!(
+                                "[{}] 📸 Aloitetaan {}: {} ruutua × {}s",
+                                Utc::now().format("%H:%M:%S"), frame_type.display_fi(), total_frames, exp_s
+                            ));
+                        }
+
+                        client.set_exposure_time(exp_s);
+                        if frame_type == FrameType::Light {
+                            client.start_stacking();
                         } else {
-                            cur_dither_cfg.settle_seconds
-                        };
-                        for _ in 0..settle_wait {
+                            client.start_calibration_exposure(exp_s, frame_type == FrameType::Dark);
+                        }
+
+                        let mut completed_frames: u32 = 0;
+                        let mut last_dithered_frame: u32 = 0;
+                        let mut step_failed = false;
+
+                        while completed_frames < total_frames {
+                            if cancel_clone.load(Ordering::SeqCst) {
+                                break;
+                            }
+
+                            // Connection check
+                            let telem = client.get_telemetry();
+                            if !telem.connected && !telem.is_simulation {
+                                if !Self::wait_for_connection(&state_clone, &cancel_clone, &client, Some(i), conn_guard.grace_period_minutes) {
+                                    step_failed = true;
+                                    break;
+                                }
+                                if frame_type == FrameType::Light {
+                                    client.start_stacking();
+                                } else {
+                                    client.start_calibration_exposure(exp_s, frame_type == FrameType::Dark);
+                                }
+                            }
+
+                            // Wait exposure time in 1-second chunks for responsive cancellation
+                            for _ in 0..exp_s {
+                                if cancel_clone.load(Ordering::SeqCst) {
+                                    break;
+                                }
+                                thread::sleep(Duration::from_secs(1));
+                                let mut s = state_clone.lock().unwrap();
+                                if i < s.items.len() {
+                                    s.items[i].elapsed_seconds += 1;
+                                }
+                            }
+
+                            if cancel_clone.load(Ordering::SeqCst) {
+                                break;
+                            }
+
+                            completed_frames += 1;
+
+                            {
+                                let mut s = state_clone.lock().unwrap();
+                                if i < s.items.len() {
+                                    s.items[i].progress_str = format!("{}/{} ruutua", completed_frames, total_frames);
+                                }
+                                let rem_s = (total_frames - completed_frames) * exp_s;
+                                s.current_step_description = format!(
+                                    "{} ruutu {}/{} otettu – Jäljellä {:02}m {:02}s",
+                                    frame_type.display_fi(), completed_frames, total_frames, rem_s / 60, rem_s % 60
+                                );
+                            }
+
+                            // Dither check for Light frames
+                            let dither_interval = dither_every_n.unwrap_or(dither_cfg.interval_frames);
+                            if frame_type == FrameType::Light
+                                && dither_cfg.enabled
+                                && dither_interval > 0
+                                && completed_frames > last_dithered_frame
+                                && completed_frames % dither_interval == 0
+                                && completed_frames < total_frames
+                            {
+                                last_dithered_frame = completed_frames;
+                                {
+                                    let mut s = state_clone.lock().unwrap();
+                                    s.dithers_count += 1;
+                                    if i < s.items.len() {
+                                        s.items[i].status = JobStatus::Dithering;
+                                    }
+                                    s.current_step_description = format!("🔀 Ditheröidään (ruutu #{}/{})...", completed_frames, total_frames);
+                                    s.logs.push(format!("[{}] 🔀 Ditheröinti ruudun {} jälkeen ({} px)", Utc::now().format("%H:%M:%S"), completed_frames, dither_cfg.step_pixels));
+                                }
+                                client.trigger_dither(dither_cfg.step_pixels, dither_cfg.settle_seconds);
+                                let settle_wait = if telem.is_simulation { dither_cfg.settle_seconds.min(2) } else { dither_cfg.settle_seconds };
+                                for _ in 0..settle_wait {
+                                    if cancel_clone.load(Ordering::SeqCst) { break; }
+                                    thread::sleep(Duration::from_secs(1));
+                                }
+                                let mut s = state_clone.lock().unwrap();
+                                if i < s.items.len() {
+                                    s.items[i].status = JobStatus::Stacking;
+                                }
+                            }
+                        }
+
+                        if frame_type == FrameType::Light {
+                            client.stop_stacking();
+                        }
+
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].status = if cancel_clone.load(Ordering::SeqCst) {
+                                    JobStatus::Skipped
+                                } else if step_failed {
+                                    JobStatus::Failed
+                                } else {
+                                    JobStatus::Completed
+                                };
+                            }
+                            if !step_failed && !cancel_clone.load(Ordering::SeqCst) {
+                                s.logs.push(format!(
+                                    "[{}] ✓ Valotussarja valmis: {} ({} ruutua × {}s)",
+                                    Utc::now().format("%H:%M:%S"), frame_type.display_fi(), completed_frames, exp_s
+                                ));
+                            }
+                        }
+
+                        if step_failed {
+                            break;
+                        }
+                    }
+
+                    SequenceStep::WaitSeconds { seconds, reason } => {
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].status = JobStatus::Pending;
+                            }
+                            s.current_step_description = format!("Odotus: {}s ({})", seconds, reason);
+                            s.logs.push(format!("[{}] ⏳ Odotus aloitettu: {}s ({})", Utc::now().format("%H:%M:%S"), seconds, reason));
+                        }
+
+                        for sec in 0..seconds {
                             if cancel_clone.load(Ordering::SeqCst) {
                                 break;
                             }
                             thread::sleep(Duration::from_secs(1));
+                            let remain = seconds.saturating_sub(sec + 1);
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].elapsed_seconds = sec + 1;
+                                s.items[i].progress_str = format!("{}s / {}s", sec + 1, seconds);
+                            }
+                            s.current_step_description = format!("Odotetaan: jäljellä {:02}m {:02}s ({})", remain / 60, remain % 60, reason);
                         }
 
                         let mut s = state_clone.lock().unwrap();
-                        s.targets[i].status = JobStatus::Stacking;
+                        if i < s.items.len() {
+                            s.items[i].status = if cancel_clone.load(Ordering::SeqCst) { JobStatus::Skipped } else { JobStatus::Completed };
+                        }
+                        s.logs.push(format!("[{}] ✓ Odotus päättynyt: {}s", Utc::now().format("%H:%M:%S"), seconds));
                     }
 
-                    // D. Advance active exposure clock
-                    accumulated_stack_secs += 1;
-                    let remaining = target_duration_secs.saturating_sub(accumulated_stack_secs);
-                    let mut s = state_clone.lock().unwrap();
-                    s.targets[i].status = JobStatus::Stacking;
-                    s.targets[i].elapsed_seconds = accumulated_stack_secs;
-                    s.current_step_description = format!(
-                        "Pinoaa kohdetta {} ({} ruutua) – Jäljellä {:02}m {:02}s",
-                        target_name,
-                        telem.stacked_frames,
-                        remaining / 60,
-                        remaining % 60
-                    );
-                }
-
-                // Stop stacking for this target
-                client.stop_stacking();
-                {
-                    let mut s = state_clone.lock().unwrap();
-                    s.targets[i].status = if cancel_clone.load(Ordering::SeqCst) {
-                        JobStatus::Skipped
-                    } else if target_failed {
-                        JobStatus::Failed
-                    } else {
-                        JobStatus::Completed
-                    };
-                    if !target_failed {
-                        s.logs.push(format!("[{}] ✓ Kohde valmis: {}", Utc::now().format("%H:%M:%S"), target_name));
+                    SequenceStep::Park => {
+                        {
+                            let mut s = state_clone.lock().unwrap();
+                            if i < s.items.len() {
+                                s.items[i].status = JobStatus::Completed;
+                            }
+                            s.current_step_description = "Ajetaan kaukoputki parkkiasentoon...".to_string();
+                            s.logs.push(format!("[{}] 🏠 Ajo parkkiin käynnistetty.", Utc::now().format("%H:%M:%S")));
+                        }
+                        client.park();
+                        thread::sleep(Duration::from_secs(2));
+                        let mut s = state_clone.lock().unwrap();
+                        s.logs.push(format!("[{}] ✓ Kaukoputki parkkiasennossa.", Utc::now().format("%H:%M:%S")));
                     }
                 }
 
-                if target_failed {
-                    break;
-                }
-
-                // Cool down / settle pause between targets
-                thread::sleep(Duration::from_secs(3));
+                thread::sleep(Duration::from_millis(500));
             }
 
-            // End of Sequence: Auto-Park
+            // End of Sequence: Auto-Park if requested
             let auto_park = {
                 let mut s = state_clone.lock().unwrap();
                 s.is_running = false;
+                s.current_item_idx = None;
                 s.current_job_idx = None;
                 s.current_step_description = if cancel_clone.load(Ordering::SeqCst) {
                     "Sekvenssi keskeytetty käyttäjän toimesta.".to_string()
                 } else {
-                    "Kaikki yökohteet kuvattu onnistuneesti!".to_string()
+                    "Kaikki yötoiminnot suoritettu onnistuneesti!".to_string()
                 };
                 s.logs.push(format!("[{}] 🏁 Yöajo päättynyt.", Utc::now().format("%H:%M:%S")));
                 s.auto_park_at_end

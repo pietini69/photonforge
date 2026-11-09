@@ -5,8 +5,8 @@ use crate::telescope::coordinates::{
 use crate::telescope::discovery::{discover_telescope, TelescopeConfig};
 use crate::telescope::downloader::LiveIngestManager;
 use crate::telescope::mosaic::{MosaicGridConfig, MosaicPlan, MosaicScopeModel};
-use crate::telescope::seestar::{SeestarClient, SeestarState};
-use crate::telescope::sequencer::{JobStatus, NightSequencer};
+use crate::telescope::seestar::{FilterChoice, SeestarClient, SeestarState};
+use crate::telescope::sequencer::{FrameType, JobStatus, NightSequencer, SequenceItem, SequenceStep};
 use chrono::Utc;
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use std::sync::Arc;
@@ -757,6 +757,9 @@ impl TelescopeView {
                         if ui.button(crate::i18n::tr("➕ Lisää sekvensseriin")).clicked() {
                             sequencer.add_target_with_exposure(target, state.sequence_duration_mins, state.sequence_sub_exposure_secs, state.sequence_use_lp);
                         }
+                        if ui.button(crate::i18n::tr("🌑 + Dark-sarja")).on_hover_text(crate::i18n::tr("Lisää pimeiden kalibrointikuvien sarja sekvenssiin")).clicked() {
+                            sequencer.add_dark_calibration_sequence(state.sequence_sub_exposure_secs, 20);
+                        }
                     });
                 } else {
                     ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Klikkaa kohdetta tähtikartalta tai valitse alta haku.")).color(Color32::from_rgb(150, 160, 180))).wrap());
@@ -1199,60 +1202,121 @@ impl TelescopeView {
 
                 ui.add_space(4.0);
 
-                // Target List - Structured 2-row cards with guaranteed visible title and buttons
-                if seq_state.targets.is_empty() {
-                    ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä. Valitse kohteita tähtikartalta ja paina 'Lisää sekvensseriin'.")).small().color(Color32::from_rgb(140, 150, 170))).wrap());
+                // N.I.N.A. Quick-Add Step Bar
+                ui.horizontal_wrapped(|ui| {
+                    if ui.small_button(crate::i18n::tr("+ 🎯 Ajo")).on_hover_text(crate::i18n::tr("Lisää kääntyminen kohteeseen")).clicked() {
+                        let (name, ra, dec) = if let Some(t) = &state.selected_object {
+                            (t.name.clone(), t.ra_hours, t.dec_deg)
+                        } else {
+                            ("Uusi kohde".to_string(), 0.0, 0.0)
+                        };
+                        sequencer.add_item(SequenceStep::SlewToTarget {
+                            name,
+                            ra_hours: ra,
+                            dec_deg: dec,
+                            solve_and_center: true,
+                            min_altitude_deg: 20.0,
+                        });
+                    }
+                    if ui.small_button(crate::i18n::tr("+ 📸 Valotus")).on_hover_text(crate::i18n::tr("Lisää valotussarja (Light/Dark/Flat/Bias)")).clicked() {
+                        sequencer.add_item(SequenceStep::TakeExposures {
+                            frame_type: FrameType::Light,
+                            exposure_secs: state.sequence_sub_exposure_secs,
+                            count: 30,
+                            dither_every_n: Some(3),
+                        });
+                    }
+                    if ui.small_button(crate::i18n::tr("+ 🔍 AF")).on_hover_text(crate::i18n::tr("Lisää automaattitarkennus")).clicked() {
+                        sequencer.add_item(SequenceStep::AutoFocus {
+                            reason: "Tarkennus".to_string(),
+                        });
+                    }
+                    if ui.small_button(crate::i18n::tr("+ 🛡 Suodin")).on_hover_text(crate::i18n::tr("Lisää suotimen asetus")).clicked() {
+                        sequencer.add_item(SequenceStep::SetFilter {
+                            filter: FilterChoice::LightPollution,
+                        });
+                    }
+                    if ui.small_button(crate::i18n::tr("+ 🌑 Dark")).on_hover_text(crate::i18n::tr("Lisää mustien kalibrointikuvien sarja (20 × Dark)")).clicked() {
+                        sequencer.add_dark_calibration_sequence(state.sequence_sub_exposure_secs, 20);
+                    }
+                    if ui.small_button(crate::i18n::tr("+ ⏳ Odotus")).on_hover_text(crate::i18n::tr("Lisää odotusaika (tauko)")).clicked() {
+                        sequencer.add_item(SequenceStep::WaitSeconds {
+                            seconds: 60,
+                            reason: "Tauko".to_string(),
+                        });
+                    }
+                    if ui.small_button(crate::i18n::tr("+ 🏠 Park")).on_hover_text(crate::i18n::tr("Lisää ajo lepoasentoon")).clicked() {
+                        sequencer.add_item(SequenceStep::Park);
+                    }
+                });
+
+                ui.add_space(4.0);
+
+                // N.I.N.A. Instruction List
+                if seq_state.items.is_empty() {
+                    ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä. Lisää toimintoja yltä tai valitse kohde tähtikartalta.")).small().color(Color32::from_rgb(140, 150, 170))).wrap());
                 } else {
-                    for (idx, target) in seq_state.targets.iter().enumerate() {
-                        let is_active = seq_state.current_job_idx == Some(idx);
+                    for (idx, item) in seq_state.items.iter().enumerate() {
+                        let is_active = seq_state.current_item_idx == Some(idx) && seq_state.is_running;
                         ui.group(|ui| {
                             ui.set_max_width(ui.available_width());
-                            // Row 1: Right-to-left layout for delete button & status, then left-to-right title
                             ui.horizontal(|ui| {
+                                let mut en = item.enabled;
+                                if ui.checkbox(&mut en, "").on_hover_text(crate::i18n::tr("Kytke toiminto päälle/pois")).changed() {
+                                    sequencer.toggle_item(idx);
+                                }
+
                                 let title_col = if is_active {
                                     Color32::from_rgb(255, 230, 80)
-                                } else if target.status == JobStatus::Completed {
+                                } else if item.status == JobStatus::Completed {
                                     Color32::from_rgb(100, 230, 120)
+                                } else if !item.enabled {
+                                    Color32::from_rgb(130, 140, 155)
                                 } else {
                                     Color32::from_rgb(200, 220, 245)
                                 };
 
                                 let prefix = if is_active { "▶ " } else { "" };
-                                let label_str = format!("{}{}. {}", prefix, idx + 1, target.name);
+                                let label_str = format!("{}{}. {} {}", prefix, idx + 1, item.icon(), item.title());
 
-                                let status_col = match target.status {
+                                let status_col = match item.status {
                                     JobStatus::Completed => Color32::from_rgb(100, 255, 120),
                                     JobStatus::Stacking => Color32::from_rgb(80, 200, 255),
                                     JobStatus::Focusing => Color32::from_rgb(255, 225, 90),
                                     JobStatus::Dithering => Color32::from_rgb(190, 140, 255),
                                     JobStatus::WaitingConnection => Color32::from_rgb(255, 160, 60),
+                                    JobStatus::Slewing | JobStatus::Solving => Color32::from_rgb(255, 210, 80),
                                     JobStatus::Failed => Color32::from_rgb(255, 100, 100),
-                                    _ => Color32::from_rgb(160, 175, 200),
+                                    JobStatus::Skipped => Color32::from_rgb(150, 160, 180),
+                                    JobStatus::Pending => Color32::from_rgb(160, 175, 200),
                                 };
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.small_button("✖").on_hover_text(crate::i18n::tr("Poista sekvenssistä")).clicked() {
-                                        sequencer.remove_target(idx);
+                                    if ui.small_button("✖").on_hover_text(crate::i18n::tr("Poista toiminto")).clicked() {
+                                        sequencer.remove_item(idx);
                                     }
-                                    ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).small().color(status_col));
+                                    if ui.small_button("⬇").on_hover_text(crate::i18n::tr("Siirrä alemmas")).clicked() {
+                                        sequencer.move_item_down(idx);
+                                    }
+                                    if ui.small_button("⬆").on_hover_text(crate::i18n::tr("Siirrä ylemmäs")).clicked() {
+                                        sequencer.move_item_up(idx);
+                                    }
+
+                                    ui.label(RichText::new(crate::i18n::tr(item.status.display_fi())).small().color(status_col));
 
                                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                        ui.add(egui::Label::new(RichText::new(&label_str).strong().color(title_col)).truncate())
-                                            .on_hover_text(&target.name);
+                                        ui.add(egui::Label::new(RichText::new(&label_str).strong().small().color(title_col)).truncate())
+                                            .on_hover_text(&label_str);
                                     });
                                 });
                             });
 
-                            // Row 2: Metadata Badges
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new(format!("⏱ {} min ({}s)", target.duration_minutes, target.sub_exposure_secs)).small().color(Color32::from_rgb(255, 220, 120)));
-                                ui.label(RichText::new("•").small().color(Color32::from_rgb(100, 110, 130)));
-                                let filt_label = if target.use_lp_filter { "🌙 LP" } else { "☀️ UV/IR" };
-                                ui.label(RichText::new(filt_label).small().color(Color32::from_rgb(130, 220, 255)));
-                                ui.label(RichText::new("•").small().color(Color32::from_rgb(100, 110, 130)));
-                                let (alt, _) = ra_dec_to_alt_az(target.ra_hours, target.dec_deg, lat, lon, &now_utc);
-                                ui.label(RichText::new(format!("📐 Alt: {:.0}°", alt)).small().color(Color32::from_rgb(170, 185, 210)));
-                            });
+                            // Sub-row: Progress if active
+                            if is_active && !item.progress_str.is_empty() {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(format!("⚡ {}", item.progress_str)).small().color(Color32::from_rgb(255, 220, 120)));
+                                });
+                            }
                         });
                         ui.add_space(2.0);
                     }
@@ -1266,7 +1330,7 @@ impl TelescopeView {
     /// Renders the Full-Screen Night Sequencer Dashboard in the Central Panel
     pub fn ui_sequencer_center_view(
         ui: &mut egui::Ui,
-        _state: &mut TelescopeViewState,
+        state: &mut TelescopeViewState,
         sequencer: &Arc<NightSequencer>,
         client: &Arc<SeestarClient>,
         lat: f64,
@@ -1323,8 +1387,8 @@ impl TelescopeView {
                         ui.separator();
                         ui.label(format!("{}: {} {}", crate::i18n::tr("Ditheröinnit:"), seq_state.dithers_count, crate::i18n::tr("kpl")));
                         ui.separator();
-                        let total_mins: u32 = seq_state.targets.iter().map(|t| t.duration_minutes).sum();
-                        ui.label(RichText::new(format!("{}: {} h {:02} min ({} {})", crate::i18n::tr("Kokonaisaika:"), total_mins / 60, total_mins % 60, seq_state.targets.len(), crate::i18n::tr("kohdetta"))).color(Color32::from_rgb(255, 220, 120)));
+                        let total_secs: u32 = seq_state.items.iter().filter(|it| it.enabled).map(|it| it.estimated_duration_secs()).sum();
+                        ui.label(RichText::new(format!("{}: {} h {:02} min ({} {})", crate::i18n::tr("Kokonaisaika:"), total_secs / 3600, (total_secs % 3600) / 60, seq_state.items.len(), crate::i18n::tr("toimintoa"))).color(Color32::from_rgb(255, 220, 120)));
                     });
 
                     ui.horizontal_wrapped(|ui| {
@@ -1477,33 +1541,167 @@ impl TelescopeView {
 
                 ui.add_space(8.0);
 
-                // Target Sequence Table / Cards
-                ui.heading(RichText::new(crate::i18n::tr("Kuvauslista")).size(16.0));
+                // N.I.N.A. Advanced Scheduler Header & Action Bar
+                ui.horizontal_wrapped(|ui| {
+                    ui.heading(RichText::new(crate::i18n::tr("Kuvauslista (N.I.N.A. Advanced Scheduler)")).size(16.0).color(Color32::from_rgb(255, 215, 100)));
+                    ui.separator();
+                    ui.label(RichText::new(format!("{} {}", seq_state.items.len(), crate::i18n::tr("toimintoa sekvenssissä"))).color(Color32::from_rgb(180, 195, 215)));
+                });
 
-                if seq_state.targets.is_empty() {
+                ui.add_space(4.0);
+
+                // Quick Add Toolbar
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🎯 Ajo kohteeseen")).color(Color32::from_rgb(120, 220, 255)).strong())
+                        .on_hover_text(crate::i18n::tr("Lisää kääntyminen kohteeseen, koordinaatit ja kenttätunnistus (Plate Solving)"))
+                        .clicked()
+                    {
+                        let (name, ra, dec) = if let Some(t) = &state.selected_object {
+                            (t.name.clone(), t.ra_hours, t.dec_deg)
+                        } else {
+                            ("Uusi kohde".to_string(), 0.0, 0.0)
+                        };
+                        sequencer.add_item(SequenceStep::SlewToTarget {
+                            name,
+                            ra_hours: ra,
+                            dec_deg: dec,
+                            solve_and_center: true,
+                            min_altitude_deg: 20.0,
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 📸 Valotussarja")).color(Color32::from_rgb(255, 220, 100)).strong())
+                        .on_hover_text(crate::i18n::tr("Lisää valotussarja: valittavissa Light, Dark (mustat kuvat), Flat tai Bias"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::TakeExposures {
+                            frame_type: FrameType::Light,
+                            exposure_secs: state.sequence_sub_exposure_secs,
+                            count: 30,
+                            dither_every_n: Some(3),
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🔍 Automaattitarkennus")).color(Color32::from_rgb(255, 235, 120)).strong())
+                        .on_hover_text(crate::i18n::tr("Lisää automaattitarkennus (Auto-Focus)"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::AutoFocus {
+                            reason: "Tarkennus".to_string(),
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🎛 Tarkennusasento")).color(Color32::from_rgb(220, 180, 255)).strong())
+                        .on_hover_text(crate::i18n::tr("Aseta tarkennusmoottori kiinteään askelmäärään"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::SetFocuserPosition {
+                            position: telem.focus_position,
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🛡 Suodatin")).color(Color32::from_rgb(100, 240, 210)).strong())
+                        .on_hover_text(crate::i18n::tr("Vaihda suodatinta (Normaali UV/IR, Valosaaste LP tai Dark suljettu)"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::SetFilter {
+                            filter: FilterChoice::LightPollution,
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🌑 Pika Dark-sarja")).color(Color32::from_rgb(180, 160, 255)).strong())
+                        .on_hover_text(crate::i18n::tr("Lisää pimeiden kalibrointikuvien sarja (Suodin Dark -> 20 × Dark -> Suodin Normaali)"))
+                        .clicked()
+                    {
+                        sequencer.add_dark_calibration_sequence(state.sequence_sub_exposure_secs, 20);
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ ⏳ Odotusaika")).color(Color32::from_rgb(255, 180, 140)).strong())
+                        .on_hover_text(crate::i18n::tr("Lisää määräaikainen tauko tai odotusaika"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::WaitSeconds {
+                            seconds: 60,
+                            reason: "Tauko".to_string(),
+                        });
+                    }
+
+                    if ui.button(RichText::new(crate::i18n::tr("+ 🏠 Parkkeeraa")).color(Color32::from_rgb(190, 190, 200)).strong())
+                        .on_hover_text(crate::i18n::tr("Aja teleskooppi lepoasentoon"))
+                        .clicked()
+                    {
+                        sequencer.add_item(SequenceStep::Park);
+                    }
+                });
+
+                // Quick Presets
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(crate::i18n::tr("Pikatoiminnot:")).small().color(Color32::from_rgb(140, 155, 175)));
+                    if let Some(target) = &state.selected_object {
+                        let btn_txt = format!("✨ {} ({})", crate::i18n::tr("Lisää tähtikartan kohde N.I.N.A.-sarjana:"), target.id);
+                        if ui.button(RichText::new(btn_txt).small().color(Color32::from_rgb(110, 255, 200))).clicked() {
+                            sequencer.add_target_with_exposure(target, state.sequence_duration_mins, state.sequence_sub_exposure_secs, state.sequence_use_lp);
+                        }
+                    }
+                    if ui.button(RichText::new(crate::i18n::tr("🌑 Täysi Dark-paketti (20×10s + 20×30s)")).small().color(Color32::from_rgb(190, 160, 255))).clicked() {
+                        sequencer.add_dark_calibration_sequence(10, 20);
+                        sequencer.add_dark_calibration_sequence(30, 20);
+                    }
+                });
+
+                ui.add_space(6.0);
+
+                // N.I.N.A. Instruction List
+                if seq_state.items.is_empty() {
                     ui.group(|ui| {
                         ui.vertical_centered(|ui| {
                             ui.add_space(20.0);
                             ui.label(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä.")).size(16.0).color(Color32::from_rgb(160, 170, 190)));
-                            ui.label(crate::i18n::tr("Valitse kohteita tähtikartalta tai luo mosaiikki ja lisää se sekvenssiin."));
+                            ui.label(crate::i18n::tr("Lisää toimintoja yltä tai valitse kohde tähtikartalta. Voit vapaasti yhdistellä kohteeseen ajoa, valotuksia, tarkennuksia ja suotimia."));
                             ui.add_space(20.0);
                         });
                     });
                 } else {
-                    for (idx, target) in seq_state.targets.iter().enumerate() {
-                        let is_active = seq_state.current_job_idx == Some(idx);
+                    let mut item_update: Option<(usize, SequenceItem)> = None;
 
-                        ui.group(|ui| {
-                            ui.set_max_width(ui.available_width());
+                    for (idx, item) in seq_state.items.iter().enumerate() {
+                        let is_active = seq_state.current_item_idx == Some(idx) && seq_state.is_running;
+                        let mut item_mut = item.clone();
+                        let mut modified = false;
 
-                            // Row 1: Right-aligned delete button and status badge, left fills with Title
-                            ui.horizontal(|ui| {
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.button(crate::i18n::tr("✖ Poista")).clicked() {
-                                        sequencer.remove_target(idx);
+                        let stroke_color = if is_active {
+                            Color32::from_rgb(255, 215, 60)
+                        } else if !item.enabled {
+                            Color32::from_rgb(60, 65, 75)
+                        } else {
+                            Color32::from_rgb(80, 90, 110)
+                        };
+
+                        egui::Frame::group(ui.style())
+                            .stroke(Stroke::new(if is_active { 2.0_f32 } else { 1.0_f32 }, stroke_color))
+                            .show(ui, |ui| {
+                                ui.set_max_width(ui.available_width());
+
+                                // Row 1: Header (Checkbox, Step Number, Icon, Title, Action Buttons, Status)
+                                ui.horizontal(|ui| {
+                                    if ui.checkbox(&mut item_mut.enabled, "").on_hover_text(crate::i18n::tr("Kytke toiminto päälle/pois")).changed() {
+                                        modified = true;
                                     }
 
-                                    let status_color = match target.status {
+                                    let title_color = if is_active {
+                                        Color32::from_rgb(255, 230, 80)
+                                    } else if item.status == JobStatus::Completed {
+                                        Color32::from_rgb(100, 235, 130)
+                                    } else if !item.enabled {
+                                        Color32::from_rgb(130, 140, 155)
+                                    } else {
+                                        Color32::from_rgb(215, 230, 255)
+                                    };
+
+                                    let prefix = if is_active { "▶ " } else { "" };
+                                    let header_title = format!("{}{}. {} {}", prefix, idx + 1, item.icon(), crate::i18n::tr(item.type_name_fi()));
+
+                                    let status_color = match item.status {
                                         JobStatus::Completed => Color32::from_rgb(100, 255, 120),
                                         JobStatus::Stacking => Color32::from_rgb(80, 200, 255),
                                         JobStatus::Focusing => Color32::from_rgb(255, 225, 90),
@@ -1512,50 +1710,206 @@ impl TelescopeView {
                                         JobStatus::Slewing | JobStatus::Solving => Color32::from_rgb(255, 210, 80),
                                         JobStatus::Failed => Color32::from_rgb(255, 100, 100),
                                         JobStatus::Skipped => Color32::from_rgb(150, 160, 180),
-                                        JobStatus::Pending => Color32::from_rgb(180, 190, 210),
+                                        JobStatus::Pending => Color32::from_rgb(170, 185, 210),
                                     };
-                                    ui.label(RichText::new(crate::i18n::tr(target.status.display_fi())).color(status_color).strong());
 
-                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                        let prefix = if is_active { "▶ " } else { "" };
-                                        let title_str = format!("{}{}. {}", prefix, idx + 1, target.name);
-                                        ui.add(
-                                            egui::Label::new(
-                                                RichText::new(&title_str)
-                                                    .color(if is_active { Color32::from_rgb(255, 230, 80) } else { Color32::from_rgb(200, 220, 255) })
-                                                    .size(14.0)
-                                                    .strong(),
-                                            )
-                                            .truncate(),
-                                        )
-                                        .on_hover_text(&target.name);
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.button(crate::i18n::tr("✖ Poista")).on_hover_text(crate::i18n::tr("Poista toiminto sekvenssistä")).clicked() {
+                                            sequencer.remove_item(idx);
+                                        }
+                                        if ui.button(crate::i18n::tr("📋 Kopioi")).on_hover_text(crate::i18n::tr("Monista toiminto")).clicked() {
+                                            sequencer.duplicate_item(idx);
+                                        }
+                                        if ui.button("⬇").on_hover_text(crate::i18n::tr("Siirrä alemmas")).clicked() {
+                                            sequencer.move_item_down(idx);
+                                        }
+                                        if ui.button("⬆").on_hover_text(crate::i18n::tr("Siirrä ylemmäs")).clicked() {
+                                            sequencer.move_item_up(idx);
+                                        }
+
+                                        ui.label(RichText::new(crate::i18n::tr(item.status.display_fi())).color(status_color).strong());
+
+                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                            ui.label(RichText::new(header_title).strong().size(14.0).color(title_color));
+                                        });
                                     });
                                 });
-                            });
 
-                            ui.add_space(3.0);
-
-                            // Row 2: Target Badges / Metrics
-                            ui.horizontal_wrapped(|ui| {
-                                let (alt, az) = ra_dec_to_alt_az(target.ra_hours, target.dec_deg, lat, lon, &now_utc);
-                                ui.label(RichText::new(format!("📐 {}: {:.1}° (Az: {:.0}°)", crate::i18n::tr("Korkeus nyt:"), alt, az)).color(Color32::from_rgb(170, 185, 210)));
-                                ui.separator();
-                                ui.label(RichText::new(format!("⏱ {}: {} min ({}s sub)", crate::i18n::tr("Kesto:"), target.duration_minutes, target.sub_exposure_secs)).color(Color32::from_rgb(255, 220, 120)));
-                                ui.separator();
-                                let filt_label = if target.use_lp_filter { "Dual-Band LP" } else { "UV/IR Cut" };
-                                ui.label(RichText::new(format!("🛡 {}: {}", crate::i18n::tr("Suodatin:"), filt_label)).color(Color32::from_rgb(130, 220, 255)));
-                                ui.separator();
-                                ui.label(RichText::new(format!("📍 RA: {:.2}h, Dec: {:+.1}°", target.ra_hours, target.dec_deg)).color(Color32::from_rgb(150, 165, 185)));
-                            });
-
-                            if is_active && target.duration_minutes > 0 {
                                 ui.add_space(4.0);
-                                let total_secs = target.duration_minutes * 60;
-                                let frac = (target.elapsed_seconds as f32 / total_secs as f32).clamp(0.0, 1.0);
-                                ui.add(egui::ProgressBar::new(frac).show_percentage().animate(true));
-                            }
-                        });
+
+                                // Row 2: In-place Editable Parameters
+                                match &mut item_mut.step {
+                                    SequenceStep::SlewToTarget { name, ra_hours, dec_deg, solve_and_center, min_altitude_deg } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(crate::i18n::tr("Kohde:"));
+                                            if ui.add(egui::TextEdit::singleline(name).desired_width(140.0)).changed() {
+                                                modified = true;
+                                            }
+                                            if ui.add(egui::DragValue::new(ra_hours).range(0.0..=24.0).speed(0.05).prefix("RA: ").suffix("h")).changed() {
+                                                modified = true;
+                                            }
+                                            if ui.add(egui::DragValue::new(dec_deg).range(-90.0..=90.0).speed(0.1).prefix("Dec: ").suffix("°")).changed() {
+                                                modified = true;
+                                            }
+                                            if ui.checkbox(solve_and_center, crate::i18n::tr("Kenttätunnistus (Plate Solving)")).changed() {
+                                                modified = true;
+                                            }
+                                            if let Some(sel) = &state.selected_object {
+                                                if ui.small_button(format!("📍 {}", crate::i18n::tr("Täytä valitusta"))).clicked() {
+                                                    *name = sel.name.clone();
+                                                    *ra_hours = sel.ra_hours;
+                                                    *dec_deg = sel.dec_deg;
+                                                    modified = true;
+                                                }
+                                            }
+                                            let (cur_alt, cur_az) = ra_dec_to_alt_az(*ra_hours, *dec_deg, lat, lon, &now_utc);
+                                            ui.label(RichText::new(format!("📐 Alt: {:.1}° (Az: {:.0}°)", cur_alt, cur_az)).small().color(Color32::from_rgb(160, 180, 205)));
+                                            ui.label(crate::i18n::tr("Min Alt:"));
+                                            if ui.add(egui::DragValue::new(min_altitude_deg).range(0.0..=80.0).suffix("°")).changed() {
+                                                modified = true;
+                                            }
+                                        });
+                                    }
+
+                                    SequenceStep::TakeExposures { frame_type, exposure_secs, count, dither_every_n } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("Tyyppi:")).strong());
+                                            for &(ft, label) in &[
+                                                (FrameType::Light, "✨ Light"),
+                                                (FrameType::Dark, "🌑 Dark"),
+                                                (FrameType::Flat, "⬜ Flat"),
+                                                (FrameType::Bias, "⚡ Bias"),
+                                            ] {
+                                                let is_sel = *frame_type == ft;
+                                                if ui.add(egui::SelectableLabel::new(is_sel, label)).clicked() {
+                                                    *frame_type = ft;
+                                                    modified = true;
+                                                }
+                                            }
+
+                                            ui.separator();
+                                            ui.label(RichText::new(crate::i18n::tr("Valotusaika:")).strong());
+                                            for &sec in &[1, 2, 5, 10, 20, 30, 60] {
+                                                let is_sel = *exposure_secs == sec;
+                                                if ui.add(egui::SelectableLabel::new(is_sel, format!("{}s", sec))).clicked() {
+                                                    *exposure_secs = sec;
+                                                    modified = true;
+                                                }
+                                            }
+                                            if ui.add(egui::DragValue::new(exposure_secs).range(1..=300).suffix("s")).changed() {
+                                                modified = true;
+                                            }
+
+                                            ui.separator();
+                                            ui.label(RichText::new(crate::i18n::tr("Määrä:")).strong());
+                                            if ui.add(egui::DragValue::new(count).range(1..=1000).suffix(" kpl")).changed() {
+                                                modified = true;
+                                            }
+
+                                            let total_s = (*exposure_secs) * (*count);
+                                            ui.label(RichText::new(format!("⏱ {}: {} min {:02} s", crate::i18n::tr("Kesto"), total_s / 60, total_s % 60)).color(Color32::from_rgb(255, 220, 120)));
+
+                                            if *frame_type == FrameType::Light {
+                                                ui.separator();
+                                                let mut use_dither = dither_every_n.is_some();
+                                                if ui.checkbox(&mut use_dither, crate::i18n::tr("Ditheröinti")).changed() {
+                                                    *dither_every_n = if use_dither { Some(3) } else { None };
+                                                    modified = true;
+                                                }
+                                                if let Some(ref mut d_int) = dither_every_n {
+                                                    ui.label(crate::i18n::tr("Väli:"));
+                                                    if ui.add(egui::DragValue::new(d_int).range(1..=20).prefix(crate::i18n::tr("joka ")).suffix(crate::i18n::tr(". kuva"))).changed() {
+                                                        modified = true;
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
+
+                                    SequenceStep::SetFilter { filter } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("Suodattimen asetus:")).strong());
+                                            for &(fc, label) in &[
+                                                (FilterChoice::Normal, "☀️ Normaali (UV/IR Cut)"),
+                                                (FilterChoice::LightPollution, "🌙 Valosaaste (Dual-Band LP)"),
+                                                (FilterChoice::Dark, "🌑 Dark (Suljettu maski)"),
+                                            ] {
+                                                let is_sel = *filter == fc;
+                                                if ui.add(egui::SelectableLabel::new(is_sel, label)).clicked() {
+                                                    *filter = fc;
+                                                    modified = true;
+                                                }
+                                            }
+                                        });
+                                    }
+
+                                    SequenceStep::AutoFocus { reason } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("Automaattitarkennus")).strong().color(Color32::from_rgb(255, 230, 110)));
+                                            ui.label(crate::i18n::tr("Syy / Kuvaus:"));
+                                            if ui.add(egui::TextEdit::singleline(reason).desired_width(200.0)).changed() {
+                                                modified = true;
+                                            }
+                                            ui.label(RichText::new(crate::i18n::tr("Ajaa HFD-tähtitarkennuksen automaattisesti")).small().color(Color32::from_rgb(160, 180, 205)));
+                                        });
+                                    }
+
+                                    SequenceStep::SetFocuserPosition { position } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("Tarkennusmoottorin kiinteä asento:")).strong());
+                                            if ui.add(egui::DragValue::new(position).range(0..=50000).suffix(" askelta")).changed() {
+                                                modified = true;
+                                            }
+                                            if ui.small_button(crate::i18n::tr("Käytä nykyistä asentoa")).clicked() {
+                                                *position = telem.focus_position;
+                                                modified = true;
+                                            }
+                                        });
+                                    }
+
+                                    SequenceStep::WaitSeconds { seconds, reason } => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("Odotusaika:")).strong());
+                                            if ui.add(egui::DragValue::new(seconds).range(1..=3600).suffix(" s")).changed() {
+                                                modified = true;
+                                            }
+                                            ui.label(crate::i18n::tr("Syy:"));
+                                            if ui.add(egui::TextEdit::singleline(reason).desired_width(160.0)).changed() {
+                                                modified = true;
+                                            }
+                                        });
+                                    }
+
+                                    SequenceStep::Park => {
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(crate::i18n::tr("🏠 Ajaa kaukoputken turvalliseen parkkiasentoon ja sammuttaa moottorit.")).color(Color32::from_rgb(180, 190, 210)));
+                                        });
+                                    }
+                                }
+
+                                // Row 3: Live Progress Display when active
+                                if is_active {
+                                    ui.add_space(4.0);
+                                    let est_s = item.estimated_duration_secs().max(1);
+                                    let frac = (item.elapsed_seconds as f32 / est_s as f32).clamp(0.0, 1.0);
+                                    ui.add(egui::ProgressBar::new(frac).show_percentage().animate(true));
+                                    if !item.progress_str.is_empty() {
+                                        ui.label(RichText::new(format!("⚡ {}", item.progress_str)).small().color(Color32::from_rgb(255, 230, 120)));
+                                    }
+                                }
+                            });
+
+                        if modified {
+                            item_update = Some((idx, item_mut));
+                        }
                         ui.add_space(4.0);
+                    }
+
+                    if let Some((idx, new_item)) = item_update {
+                        let mut s = sequencer.state.lock().unwrap();
+                        if idx < s.items.len() {
+                            s.items[idx] = new_item;
+                        }
                     }
                 }
 

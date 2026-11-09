@@ -61,6 +61,40 @@ impl SeestarState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FilterChoice {
+    Normal,         // UV/IR Cut (Alpaca pos 1, Seestar "clear", DwarfLab 0)
+    LightPollution, // Dual-band LP (Alpaca pos 2, Seestar "lp", DwarfLab 1)
+    Dark,           // Dark mask/Closed (Alpaca pos 0, Seestar "dark", DwarfLab 2)
+}
+
+impl FilterChoice {
+    pub fn display_fi(&self) -> &'static str {
+        match self {
+            FilterChoice::Normal => "Normaali (UV/IR Cut)",
+            FilterChoice::LightPollution => "Valosaaste (Dual-Band LP)",
+            FilterChoice::Dark => "Dark (Suljettu)",
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn display_en(&self) -> &'static str {
+        match self {
+            FilterChoice::Normal => "Normal (UV/IR Cut)",
+            FilterChoice::LightPollution => "Light Pollution (Dual-Band)",
+            FilterChoice::Dark => "Dark (Closed)",
+        }
+    }
+
+    pub fn alpaca_position(&self) -> &'static str {
+        match self {
+            FilterChoice::Normal => "1",
+            FilterChoice::LightPollution => "2",
+            FilterChoice::Dark => "0",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DitherConfig {
     pub enabled: bool,
     pub interval_frames: u32,
@@ -101,6 +135,7 @@ pub struct SeestarTelemetry {
     pub stacked_frames: u32,
     pub total_stack_seconds: u32,
     pub lp_filter_active: bool,
+    pub current_filter: FilterChoice,
     pub last_log_message: String,
     pub auto_reconnect_enabled: bool,
     pub reconnect_attempts: u32,
@@ -135,6 +170,7 @@ impl Default for SeestarTelemetry {
             stacked_frames: 0,
             total_stack_seconds: 0,
             lp_filter_active: false,
+            current_filter: FilterChoice::Normal,
             last_log_message: "Kaukoputkiohjain valmiina.".to_string(),
             auto_reconnect_enabled: true,
             reconnect_attempts: 0,
@@ -174,8 +210,15 @@ enum SeestarCommand {
     Park,
     Unpark,
     ToggleLpFilter,
+    #[allow(dead_code)]
     SetLpFilter(bool),
+    SetFilterChoice(FilterChoice),
     AutoFocus,
+    SetFocusPosition(u32),
+    StartCalibrationExposure {
+        exposure_secs: u32,
+        is_dark: bool,
+    },
     ConfigureDither(DitherConfig),
     TriggerDither {
         pixels: u32,
@@ -825,6 +868,130 @@ impl SeestarClient {
                                         }
                                         _ => {}
                                     }
+                                }
+                            }
+                        }
+                        SeestarCommand::SetFilterChoice(filter) => {
+                            let (ip, port, proto, is_sim) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.current_filter = filter;
+                                t.lp_filter_active = filter == FilterChoice::LightPollution;
+                                t.last_log_message = format!("Suodatin: {}", filter.display_fi());
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation)
+                            };
+
+                            if !is_sim {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
+                                    let pos_str = filter.alpaca_position();
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "filterwheel/0/position",
+                                        &[("Position", pos_str), ("ClientID", "1"), ("ClientTransactionID", "105")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let filter_name = match filter {
+                                                FilterChoice::Normal => "clear",
+                                                FilterChoice::LightPollution => "lp",
+                                                FilterChoice::Dark => "dark",
+                                            };
+                                            let payload = serde_json::json!({
+                                                "id": 105,
+                                                "method": "set_filter",
+                                                "params": { "filter": filter_name }
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        crate::telescope::mosaic::TelescopeProtocol::DwarfLab => {
+                                            let filter_id = match filter {
+                                                FilterChoice::Normal => 0,
+                                                FilterChoice::LightPollution => 1,
+                                                FilterChoice::Dark => 2,
+                                            };
+                                            let payload = serde_json::json!({
+                                                "interface": 10011,
+                                                "cmd": "set_filter",
+                                                "filter": filter_id
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        SeestarCommand::SetFocusPosition(pos) => {
+                            let (ip, port, proto, is_sim) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.focus_position = pos;
+                                t.last_focus_time = Some(Local::now().format("%H:%M:%S").to_string());
+                                t.last_log_message = format!("Tarkennusasento asetettu: {}", pos);
+                                (t.ip_address.clone(), t.port, t.protocol, t.is_simulation)
+                            };
+
+                            if !is_sim {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
+                                    let pos_str = pos.to_string();
+                                    let _ = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "focuser/0/move",
+                                        &[("Position", &pos_str), ("ClientID", "1"), ("ClientTransactionID", "106")],
+                                    );
+                                } else if let Some(stream) = &mut active_stream {
+                                    match proto {
+                                        crate::telescope::mosaic::TelescopeProtocol::Seestar => {
+                                            let payload = serde_json::json!({
+                                                "id": 106,
+                                                "method": "focal_step_move",
+                                                "params": { "step": pos }
+                                            });
+                                            let msg = format!("{}\r\n", payload);
+                                            let _ = stream.write_all(msg.as_bytes());
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        SeestarCommand::StartCalibrationExposure { exposure_secs, is_dark } => {
+                            let (is_sim, ip, port, proto) = {
+                                let mut t = telem_clone.lock().unwrap();
+                                t.state = SeestarState::Stacking;
+                                t.exposure_seconds = exposure_secs;
+                                t.last_log_message = format!(
+                                    "Kalibrointivalotus ({}) käynnistetty: {} s",
+                                    if is_dark { "Dark / Pimeäkuva" } else { "Flat / Tasakenttä" },
+                                    exposure_secs
+                                );
+                                (t.is_simulation, t.ip_address.clone(), t.port, t.protocol)
+                            };
+
+                            if !is_sim {
+                                if proto == crate::telescope::mosaic::TelescopeProtocol::AscomAlpaca
+                                    || (proto == crate::telescope::mosaic::TelescopeProtocol::DwarfLab && port == 11111)
+                                {
+                                    let exp_str = exposure_secs.to_string();
+                                    let light_str = if is_dark { "false" } else { "true" };
+                                    let res = alpaca_put(
+                                        &alpaca_agent,
+                                        &ip,
+                                        port,
+                                        "camera/0/startexposure",
+                                        &[("Duration", &exp_str), ("Light", light_str), ("ClientID", "1"), ("ClientTransactionID", "102")],
+                                    );
+                                    alpaca_exposure_active = res.is_ok();
+                                    last_alpaca_exposure_kick = Instant::now();
                                 }
                             }
                         }
@@ -1565,8 +1732,24 @@ impl SeestarClient {
         let _ = self.command_tx.send(SeestarCommand::ToggleLpFilter);
     }
 
+    #[allow(dead_code)]
     pub fn set_lp_filter(&self, enabled: bool) {
         let _ = self.command_tx.send(SeestarCommand::SetLpFilter(enabled));
+    }
+
+    pub fn set_filter_choice(&self, filter: FilterChoice) {
+        let _ = self.command_tx.send(SeestarCommand::SetFilterChoice(filter));
+    }
+
+    pub fn set_focus_position(&self, position: u32) {
+        let _ = self.command_tx.send(SeestarCommand::SetFocusPosition(position));
+    }
+
+    pub fn start_calibration_exposure(&self, exposure_secs: u32, is_dark: bool) {
+        let _ = self.command_tx.send(SeestarCommand::StartCalibrationExposure {
+            exposure_secs,
+            is_dark,
+        });
     }
 
     pub fn auto_focus(&self) {

@@ -1566,6 +1566,154 @@ fn test_night_automation_dither_autofocus_and_reconnect() {
 }
 
 #[test]
+fn test_nina_advanced_sequencer_steps_and_calibration() {
+    use photon_forge::telescope::seestar::{FilterChoice, SeestarClient};
+    use photon_forge::telescope::sequencer::{
+        FrameType, JobStatus, NightSequencer, SequenceStep,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let seq = NightSequencer::new();
+
+    // Default state starts with initial default items
+    {
+        let s = seq.state.lock().unwrap();
+        assert!(!s.items.is_empty());
+        assert_eq!(s.targets.len(), 2);
+    }
+
+    // Clear all
+    seq.clear_all();
+    {
+        let s = seq.state.lock().unwrap();
+        assert!(s.items.is_empty());
+        assert!(s.targets.is_empty());
+    }
+
+    // 1. Add Dark calibration sequence
+    seq.add_dark_calibration_sequence(10, 20); // 20x 10s darks
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items.len(), 3); // Filter: Dark, TakeExposures (Dark), Filter: Normal
+        assert_eq!(s.items[0].step, SequenceStep::SetFilter { filter: FilterChoice::Dark });
+        assert_eq!(s.items[1].step, SequenceStep::TakeExposures {
+            frame_type: FrameType::Dark,
+            exposure_secs: 10,
+            count: 20,
+            dither_every_n: None,
+        });
+        assert_eq!(s.items[2].step, SequenceStep::SetFilter { filter: FilterChoice::Normal });
+    }
+
+    // 2. Add Slew to target, AutoFocus, and Light exposures
+    let slew_idx = seq.add_item(SequenceStep::SlewToTarget {
+        name: "M31 Andromeda".to_string(),
+        ra_hours: 0.71,
+        dec_deg: 41.27,
+        solve_and_center: true,
+        min_altitude_deg: 20.0,
+    });
+    assert_eq!(slew_idx, 3);
+
+    seq.add_item(SequenceStep::AutoFocus {
+        reason: "M31 aloitustarkennus".to_string(),
+    });
+
+    seq.add_item(SequenceStep::SetFilter {
+        filter: FilterChoice::LightPollution,
+    });
+
+    seq.add_item(SequenceStep::TakeExposures {
+        frame_type: FrameType::Light,
+        exposure_secs: 30,
+        count: 10,
+        dither_every_n: Some(3),
+    });
+
+    seq.add_item(SequenceStep::Park);
+
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items.len(), 8);
+        assert_eq!(s.items[3].icon(), "🎯");
+        assert_eq!(s.items[4].icon(), "🔍");
+        assert_eq!(s.items[5].icon(), "🛡");
+        assert_eq!(s.items[6].icon(), "✨");
+        assert_eq!(s.items[7].icon(), "🏠");
+    }
+
+    // 3. Test Reordering (move Park up and down)
+    seq.move_item_up(7); // Move Park to index 6
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items[6].step, SequenceStep::Park);
+    }
+    seq.move_item_down(6); // Move Park back to index 7
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items[7].step, SequenceStep::Park);
+    }
+
+    // 4. Test Duplication & Toggling
+    seq.duplicate_item(6); // Duplicate Light exposures
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items.len(), 9);
+    }
+    seq.toggle_item(7); // Disable duplicated item
+    {
+        let s = seq.state.lock().unwrap();
+        assert!(!s.items[7].enabled);
+    }
+    seq.remove_item(7); // Remove duplicated item
+    {
+        let s = seq.state.lock().unwrap();
+        assert_eq!(s.items.len(), 8);
+    }
+
+    // 5. Test Simulation Execution
+    let client = Arc::new(SeestarClient::new());
+    client.set_simulation(true);
+    std::thread::sleep(Duration::from_millis(100));
+
+    // Create a mini sequence: Filter Dark -> 2x 1s Dark -> Park
+    seq.clear_all();
+    seq.add_item(SequenceStep::SetFilter { filter: FilterChoice::Dark });
+    seq.add_item(SequenceStep::TakeExposures {
+        frame_type: FrameType::Dark,
+        exposure_secs: 1,
+        count: 2,
+        dither_every_n: None,
+    });
+    seq.add_item(SequenceStep::Park);
+
+    seq.start(Arc::clone(&client));
+    std::thread::sleep(Duration::from_millis(100));
+    {
+        let s = seq.state.lock().unwrap();
+        assert!(s.is_running);
+    }
+
+    // Wait for mini sequence to finish (takes ~4-5 seconds)
+    for _ in 0..50 {
+        std::thread::sleep(Duration::from_millis(150));
+        let s = seq.state.lock().unwrap();
+        if !s.is_running {
+            break;
+        }
+    }
+
+    {
+        let s = seq.state.lock().unwrap();
+        assert!(!s.is_running);
+        assert_eq!(s.items[0].status, JobStatus::Completed);
+        assert_eq!(s.items[1].status, JobStatus::Completed);
+        assert_eq!(s.items[2].status, JobStatus::Completed);
+    }
+}
+
+#[test]
 fn test_pcc_and_spcc_photometric_color_calibration() {
     use photon_forge::core::image::AstroImage;
     use photon_forge::processing::pcc::{
