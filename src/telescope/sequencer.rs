@@ -40,7 +40,7 @@ impl JobStatus {
     }
 }
 
-/// Exposure Frame Type for N.I.N.A.-style Sequencer (Light vs Calibration frames)
+/// Exposure Frame Type for Advanced Sequencer (Light vs Calibration frames)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FrameType {
     Light,
@@ -79,7 +79,7 @@ impl FrameType {
     }
 }
 
-/// N.I.N.A.-Style Modular Sequence Step
+/// Modular Sequence Step
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SequenceStep {
     /// Ajo kohteeseen (GoTo / Slew)
@@ -118,7 +118,7 @@ pub enum SequenceStep {
     Park,
 }
 
-/// A single manageable item in the N.I.N.A. Sequence List
+/// A single manageable item in the Sequence List
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SequenceItem {
     pub id: usize,
@@ -388,7 +388,7 @@ impl Default for SequencerState {
             items,
             targets,
             logs: vec![
-                format!("[{}] Yösekvensseri alustettu (N.I.N.A.-tyylinen modulaarinen suorituslista, Ditheröinti ja Yhteysvahti valmiina).", Utc::now().format("%H:%M:%S")),
+                format!("[{}] Yösekvensseri alustettu (Modulaarinen suorituslista, Ditheröinti ja Yhteysvahti valmiina).", Utc::now().format("%H:%M:%S")),
             ],
         }
     }
@@ -756,7 +756,7 @@ impl NightSequencer {
         Some(telem.temp_c)
     }
 
-    /// Starts N.I.N.A.-Style execution loop over all items in the sequence list
+    /// Starts execution loop over all items in the sequence list
     pub fn start(&self, client: Arc<SeestarClient>) {
         let mut s = self.state.lock().unwrap();
         if s.is_running {
@@ -805,7 +805,7 @@ impl NightSequencer {
         let guard_on = s.connection_guard.auto_reconnect;
         let items_count = s.items.len();
         s.logs.push(format!(
-            "[{}] ▶ N.I.N.A.-YÖAJO KÄYNNISTETTY! (Toimintoja: {}, AF: {}, Dither: {}, Yhteysvahti: {})",
+            "[{}] ▶ YÖAJO KÄYNNISTETTY! (Toimintoja: {}, AF: {}, Dither: {}, Yhteysvahti: {})",
             Utc::now().format("%H:%M:%S"),
             items_count,
             if af_on { "PÄÄLLÄ" } else { "POIS" },

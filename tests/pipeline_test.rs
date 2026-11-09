@@ -1566,7 +1566,7 @@ fn test_night_automation_dither_autofocus_and_reconnect() {
 }
 
 #[test]
-fn test_nina_advanced_sequencer_steps_and_calibration() {
+fn test_advanced_sequencer_steps_and_calibration() {
     use photon_forge::telescope::seestar::{FilterChoice, SeestarClient};
     use photon_forge::telescope::sequencer::{
         FrameType, JobStatus, NightSequencer, SequenceStep,

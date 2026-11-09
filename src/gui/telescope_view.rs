@@ -1047,7 +1047,7 @@ impl TelescopeView {
 
         ui.add_space(6.0);
 
-        // 6. NIGHT SEQUENCER (N.I.N.A. SCHEDULER)
+        // 6. NIGHT SEQUENCER (ADVANCED SCHEDULER)
         ui.group(|ui| {
             ui.set_max_width(ui.available_width());
             let seq_state = sequencer.state.lock().unwrap().clone();
@@ -1202,7 +1202,7 @@ impl TelescopeView {
 
                 ui.add_space(4.0);
 
-                // N.I.N.A. Quick-Add Step Bar
+                // Quick-Add Step Bar
                 ui.horizontal_wrapped(|ui| {
                     if ui.small_button(crate::i18n::tr("+ 🎯 Ajo")).on_hover_text(crate::i18n::tr("Lisää kääntyminen kohteeseen")).clicked() {
                         let (name, ra, dec) = if let Some(t) = &state.selected_object {
@@ -1252,7 +1252,7 @@ impl TelescopeView {
 
                 ui.add_space(4.0);
 
-                // N.I.N.A. Instruction List
+                // Instruction List
                 if seq_state.items.is_empty() {
                     ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Kuvauslista on tyhjä. Lisää toimintoja yltä tai valitse kohde tähtikartalta.")).small().color(Color32::from_rgb(140, 150, 170))).wrap());
                 } else {
@@ -1541,9 +1541,9 @@ impl TelescopeView {
 
                 ui.add_space(8.0);
 
-                // N.I.N.A. Advanced Scheduler Header & Action Bar
+                // Advanced Scheduler Header & Action Bar
                 ui.horizontal_wrapped(|ui| {
-                    ui.heading(RichText::new(crate::i18n::tr("Kuvauslista (N.I.N.A. Advanced Scheduler)")).size(16.0).color(Color32::from_rgb(255, 215, 100)));
+                    ui.heading(RichText::new(crate::i18n::tr("Kuvauslista (Edistynyt sekvensseri)")).size(16.0).color(Color32::from_rgb(255, 215, 100)));
                     ui.separator();
                     ui.label(RichText::new(format!("{} {}", seq_state.items.len(), crate::i18n::tr("toimintoa sekvenssissä"))).color(Color32::from_rgb(180, 195, 215)));
                 });
@@ -1638,7 +1638,7 @@ impl TelescopeView {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Pikatoiminnot:")).small().color(Color32::from_rgb(140, 155, 175)));
                     if let Some(target) = &state.selected_object {
-                        let btn_txt = format!("✨ {} ({})", crate::i18n::tr("Lisää tähtikartan kohde N.I.N.A.-sarjana:"), target.id);
+                        let btn_txt = format!("✨ {} ({})", crate::i18n::tr("Lisää tähtikartan kohde sarjana:"), target.id);
                         if ui.button(RichText::new(btn_txt).small().color(Color32::from_rgb(110, 255, 200))).clicked() {
                             sequencer.add_target_with_exposure(target, state.sequence_duration_mins, state.sequence_sub_exposure_secs, state.sequence_use_lp);
                         }
@@ -1651,7 +1651,7 @@ impl TelescopeView {
 
                 ui.add_space(6.0);
 
-                // N.I.N.A. Instruction List
+                // Instruction List
                 if seq_state.items.is_empty() {
                     ui.group(|ui| {
                         ui.vertical_centered(|ui| {
