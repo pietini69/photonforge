@@ -47,6 +47,12 @@ impl HistogramProcessor {
                 let s = stf.arcsinh_stretch.max(1.0);
                 let b = stf.arcsinh_black;
                 let norm = s.asinh();
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
                 let mut out = image.clone();
 
                 out.data
@@ -56,14 +62,16 @@ impl HistogramProcessor {
                             let v = (pixel[0] - b).max(0.0);
                             pixel[0] = ((s * v).asinh() / norm).clamp(0.0, 1.0);
                         } else {
-                            let intensity = (pixel[0] + pixel[1] + pixel[2]) / 3.0;
-                            let v = (intensity - b).max(0.0);
-                            if intensity > 1e-6 {
-                                let stretched_i = (s * v).asinh() / norm;
+                            let r_net = (pixel[0] - (b + ch_ped[0])).max(0.0);
+                            let g_net = (pixel[1] - (b + ch_ped[1])).max(0.0);
+                            let b_net = (pixel[2] - (b + ch_ped[2])).max(0.0);
+                            let intensity = (r_net + g_net + b_net) / 3.0;
+                            if intensity > 1e-7 {
+                                let stretched_i = (s * intensity).asinh() / norm;
                                 let scale = stretched_i / intensity;
-                                for c in 0..3 {
-                                    pixel[c] = (pixel[c] * scale).clamp(0.0, 1.0);
-                                }
+                                pixel[0] = (r_net * scale).clamp(0.0, 1.0);
+                                pixel[1] = (g_net * scale).clamp(0.0, 1.0);
+                                pixel[2] = (b_net * scale).clamp(0.0, 1.0);
                             } else {
                                 pixel[0] = 0.0;
                                 pixel[1] = 0.0;
@@ -78,15 +86,23 @@ impl HistogramProcessor {
                 let b = stf.hms_b.max(0.0001);
                 let sp = stf.hms_sp.max(0.0);
                 let grip = stf.hms_color_grip.max(0.0);
+                let avg_sh = 0.2126 * stf.channels[0].shadows
+                    + 0.7152 * stf.channels[1].shadows
+                    + 0.0722 * stf.channels[2].shadows;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 let asinh_b = b.asinh();
-                let denom = ((d * (1.0 - sp) + b).asinh() - asinh_b).max(1e-6);
+                let denom = ((d * (1.0 - sp).max(1e-4) + b).asinh() - asinh_b).max(1e-6);
 
-                let hms_eval = |val: f32| -> f32 {
-                    if val <= sp {
+                let hms_eval_net = |net_val: f32| -> f32 {
+                    if net_val <= 0.0 {
                         0.0
                     } else {
-                        (((d * (val - sp) + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
+                        (((d * net_val + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
                     }
                 };
 
@@ -95,20 +111,20 @@ impl HistogramProcessor {
                     .par_chunks_exact_mut(image.channels)
                     .for_each(|pixel| {
                         if image.channels == 1 {
-                            pixel[0] = hms_eval(pixel[0]);
+                            pixel[0] = hms_eval_net((pixel[0] - sp).max(0.0));
                         } else {
-                            let r = pixel[0];
-                            let g = pixel[1];
-                            let bl = pixel[2];
+                            let r_net = (pixel[0] - (sp + ch_ped[0])).max(0.0);
+                            let g_net = (pixel[1] - (sp + ch_ped[1])).max(0.0);
+                            let b_net = (pixel[2] - (sp + ch_ped[2])).max(0.0);
 
-                            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+                            let lum = 0.2126 * r_net + 0.7152 * g_net + 0.0722 * b_net;
                             if lum > 1e-7 {
-                                let stretched_lum = hms_eval(lum);
+                                let stretched_lum = hms_eval_net(lum);
                                 let scale = stretched_lum / lum;
 
-                                let r_base = r * scale;
-                                let g_base = g * scale;
-                                let b_base = bl * scale;
+                                let r_base = r_net * scale;
+                                let g_base = g_net * scale;
+                                let b_base = b_net * scale;
 
                                 let (r_fin, g_fin, b_fin) = if (grip - 1.0).abs() < 1e-3 {
                                     (r_base, g_base, b_base)
@@ -136,12 +152,27 @@ impl HistogramProcessor {
                 let a = stf.log_factor.max(1.0);
                 let b = stf.log_black;
                 let norm = (1.0 + a).ln().max(1e-6);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
                 let mut out = image.clone();
 
-                out.data.par_iter_mut().for_each(|v| {
-                    let val = (*v - b).max(0.0);
-                    *v = ((1.0 + a * val).ln() / norm).clamp(0.0, 1.0);
-                });
+                out.data
+                    .par_chunks_exact_mut(image.channels)
+                    .for_each(|pixel| {
+                        if image.channels == 1 {
+                            let val = (pixel[0] - b).max(0.0);
+                            pixel[0] = ((1.0 + a * val).ln() / norm).clamp(0.0, 1.0);
+                        } else {
+                            for c in 0..3 {
+                                let val = (pixel[c] - (b + ch_ped[c])).max(0.0);
+                                pixel[c] = ((1.0 + a * val).ln() / norm).clamp(0.0, 1.0);
+                            }
+                        }
+                    });
                 out
             }
             crate::processing::stf::StretchMode::Ghs => {
@@ -149,24 +180,55 @@ impl HistogramProcessor {
                 let b = stf.ghs_b;
                 let sub0 = (d * (-b)).asinh();
                 let den = ((d * (1.0 - b)).asinh() - sub0).max(1e-6);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
                 let mut out = image.clone();
 
-                out.data.par_iter_mut().for_each(|v| {
-                    let num = (d * (*v - b)).asinh() - sub0;
-                    *v = (num / den).clamp(0.0, 1.0);
-                });
+                out.data
+                    .par_chunks_exact_mut(image.channels)
+                    .for_each(|pixel| {
+                        if image.channels == 1 {
+                            let num = (d * (pixel[0] - b)).asinh() - sub0;
+                            pixel[0] = (num / den).clamp(0.0, 1.0);
+                        } else {
+                            for c in 0..3 {
+                                let v = (pixel[c] - ch_ped[c]).max(0.0);
+                                let num = (d * (v - b)).asinh() - sub0;
+                                pixel[c] = (num / den).clamp(0.0, 1.0);
+                            }
+                        }
+                    });
                 out
             }
             crate::processing::stf::StretchMode::Root => {
                 let gamma = stf.gamma.clamp(0.05, 2.0);
                 let b = stf.gamma_black;
                 let den = (1.0 - b).max(1e-5);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
                 let mut out = image.clone();
 
-                out.data.par_iter_mut().for_each(|v| {
-                    let norm = ((*v - b) / den).clamp(0.0, 1.0);
-                    *v = norm.powf(gamma).clamp(0.0, 1.0);
-                });
+                out.data
+                    .par_chunks_exact_mut(image.channels)
+                    .for_each(|pixel| {
+                        if image.channels == 1 {
+                            let norm = ((pixel[0] - b) / den).clamp(0.0, 1.0);
+                            pixel[0] = norm.powf(gamma).clamp(0.0, 1.0);
+                        } else {
+                            for c in 0..3 {
+                                let norm = ((pixel[c] - (b + ch_ped[c])) / den).clamp(0.0, 1.0);
+                                pixel[c] = norm.powf(gamma).clamp(0.0, 1.0);
+                            }
+                        }
+                    });
                 out
             }
         }
@@ -208,30 +270,72 @@ impl HistogramProcessor {
     }
 
     /// Saturation adjustment (RGB only)
+    /// Operates on the background-neutralized astronomical signal above the sky pedestal
+    /// so that un-neutralized raw Bayer pedestals (where G_bg > B_bg) do not invert blue saturation,
+    /// and preserves symmetric sky background noise distribution.
     pub fn adjust_saturation(image: &AstroImage, factor: f32) -> Result<AstroImage, String> {
         if !image.is_rgb() {
             return Err("Saturation adjustment requires RGB image".to_string());
         }
 
         let mut out = image.clone();
+        let (r_bg, r_mad) = image.channel_median_and_mad(0);
+        let (g_bg, g_mad) = image.channel_median_and_mad(1);
+        let (b_bg, b_mad) = image.channel_median_and_mad(2);
+        let neutral_bg = (r_bg + g_bg + b_bg) / 3.0;
+        let avg_mad = ((r_mad + g_mad + b_mad) / 3.0).max(1e-5);
+        let noise_gate = 1.5 * avg_mad;
 
         out.data.par_chunks_exact_mut(3).for_each(|pixel| {
             let r = pixel[0];
             let g = pixel[1];
             let b = pixel[2];
 
-            // Standard luminance weights for astrophotography
-            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            if r <= 0.0 && g <= 0.0 && b <= 0.0 {
+                return;
+            }
 
-            pixel[0] = (lum + (r - lum) * factor).clamp(0.0, 1.0);
-            pixel[1] = (lum + (g - lum) * factor).clamp(0.0, 1.0);
-            pixel[2] = (lum + (b - lum) * factor).clamp(0.0, 1.0);
+            let dr = r - r_bg;
+            let dg = g - g_bg;
+            let db = b - b_bg;
+
+            let sr = dr.max(0.0);
+            let sg = dg.max(0.0);
+            let sb = db.max(0.0);
+
+            let max_sig = sr.max(sg).max(sb);
+            // Smooth SNR weight so sky background noise is not color-amplified
+            let weight = (max_sig / noise_gate).clamp(0.0, 1.0);
+            let eff_factor = 1.0 + (factor - 1.0) * weight;
+
+            let sig_lum = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+            let new_dr = if dr >= 0.0 {
+                sig_lum + (sr - sig_lum) * eff_factor
+            } else {
+                dr
+            };
+            let new_dg = if dg >= 0.0 {
+                sig_lum + (sg - sig_lum) * eff_factor
+            } else {
+                dg
+            };
+            let new_db = if db >= 0.0 {
+                sig_lum + (sb - sig_lum) * eff_factor
+            } else {
+                db
+            };
+
+            pixel[0] = (neutral_bg + new_dr).clamp(0.0, 1.0);
+            pixel[1] = (neutral_bg + new_dg).clamp(0.0, 1.0);
+            pixel[2] = (neutral_bg + new_db).clamp(0.0, 1.0);
         });
 
         Ok(out)
     }
 
     /// Color balance / channel multipliers (RGB only)
+    /// Scales the astronomical signal above the neutralized sky background while preserving
+    /// background noise symmetry so subsequent Auto-STF does not cancel out the balance adjustment.
     pub fn color_balance(
         image: &AstroImage,
         r_scale: f32,
@@ -243,11 +347,27 @@ impl HistogramProcessor {
         }
 
         let mut out = image.clone();
+        let (r_bg, _) = image.channel_median_and_mad(0);
+        let (g_bg, _) = image.channel_median_and_mad(1);
+        let (b_bg, _) = image.channel_median_and_mad(2);
+        let neutral_bg = (r_bg + g_bg + b_bg) / 3.0;
+
         out.data.par_chunks_exact_mut(3).for_each(|pixel| {
-            if pixel[0] > 0.0 || pixel[1] > 0.0 || pixel[2] > 0.0 {
-                pixel[0] = (pixel[0] * r_scale).clamp(0.0, 1.0);
-                pixel[1] = (pixel[1] * g_scale).clamp(0.0, 1.0);
-                pixel[2] = (pixel[2] * b_scale).clamp(0.0, 1.0);
+            let r = pixel[0];
+            let g = pixel[1];
+            let b = pixel[2];
+            if r > 0.0 || g > 0.0 || b > 0.0 {
+                let dr = r - r_bg;
+                let dg = g - g_bg;
+                let db = b - b_bg;
+
+                let new_dr = if dr >= 0.0 { dr * r_scale } else { dr };
+                let new_dg = if dg >= 0.0 { dg * g_scale } else { dg };
+                let new_db = if db >= 0.0 { db * b_scale } else { db };
+
+                pixel[0] = (neutral_bg + new_dr).clamp(0.0, 1.0);
+                pixel[1] = (neutral_bg + new_dg).clamp(0.0, 1.0);
+                pixel[2] = (neutral_bg + new_db).clamp(0.0, 1.0);
             }
         });
 
@@ -268,6 +388,7 @@ impl HistogramProcessor {
         let (r_bg, _) = image.channel_median_and_mad(0);
         let (g_bg, _) = image.channel_median_and_mad(1);
         let (b_bg, _) = image.channel_median_and_mad(2);
+        let neutral_bg = (r_bg + g_bg + b_bg) / 3.0;
 
         out.data.par_chunks_exact_mut(3).for_each(|pixel| {
             let r = pixel[0];
@@ -278,19 +399,31 @@ impl HistogramProcessor {
                 return;
             }
 
-            let r_sig = (r - r_bg).max(0.0);
-            let g_sig = (g - g_bg).max(0.0);
-            let b_sig = (b - b_bg).max(0.0);
+            let dr = r - r_bg;
+            let dg = g - g_bg;
+            let db = b - b_bg;
+
+            let r_sig = dr.max(0.0);
+            let g_sig = dg.max(0.0);
+            let b_sig = db.max(0.0);
 
             let oiii_sig = (g_sig + b_sig) * 0.5;
 
-            let new_r = r_bg + r_sig * ha_boost;
-            let new_g = g_bg + g_sig + oiii_sig * (oiii_boost - 1.0);
-            let new_b = b_bg + b_sig + oiii_sig * (oiii_boost - 1.0);
+            let new_dr = if dr >= 0.0 { r_sig * ha_boost } else { dr };
+            let new_dg = if dg >= 0.0 {
+                g_sig + oiii_sig * (oiii_boost - 1.0)
+            } else {
+                dg
+            };
+            let new_db = if db >= 0.0 {
+                b_sig + oiii_sig * (oiii_boost - 1.0)
+            } else {
+                db
+            };
 
-            pixel[0] = new_r.clamp(0.0, 1.0);
-            pixel[1] = new_g.clamp(0.0, 1.0);
-            pixel[2] = new_b.clamp(0.0, 1.0);
+            pixel[0] = (neutral_bg + new_dr).clamp(0.0, 1.0);
+            pixel[1] = (neutral_bg + new_dg).clamp(0.0, 1.0);
+            pixel[2] = (neutral_bg + new_db).clamp(0.0, 1.0);
         });
 
         Ok(out)
@@ -308,9 +441,12 @@ impl HistogramProcessor {
         }
 
         let mut out = image.clone();
-        let (r_bg, _) = image.channel_median_and_mad(0);
-        let (g_bg, _) = image.channel_median_and_mad(1);
-        let (b_bg, _) = image.channel_median_and_mad(2);
+        let (r_bg, r_mad) = image.channel_median_and_mad(0);
+        let (g_bg, g_mad) = image.channel_median_and_mad(1);
+        let (b_bg, b_mad) = image.channel_median_and_mad(2);
+        let neutral_bg = (r_bg + g_bg + b_bg) / 3.0;
+        let avg_mad = ((r_mad + g_mad + b_mad) / 3.0).max(1e-5);
+        let noise_gate = 1.2 * avg_mad;
 
         out.data.par_chunks_exact_mut(3).for_each(|pixel| {
             let r = pixel[0];
@@ -321,24 +457,40 @@ impl HistogramProcessor {
                 return;
             }
 
-            let r_sig = (r - r_bg).max(0.0);
-            let g_sig = (g - g_bg).max(0.0);
-            let b_sig = (b - b_bg).max(0.0);
+            let dr = r - r_bg;
+            let dg = g - g_bg;
+            let db = b - b_bg;
 
-            // Reflection nebulae emit strongly in blue starlight reflection + faint cyan
-            let new_b = b_bg + b_sig * blue_boost;
-            let new_g = g_bg + g_sig * cyan_boost;
-            let new_r = r_bg + r_sig;
+            let r_sig = dr.max(0.0);
+            let g_sig = dg.max(0.0);
+            let b_sig = db.max(0.0);
 
-            // Apply saturation boost on the signal
-            let lum = 0.2126 * new_r + 0.7152 * new_g + 0.0722 * new_b;
-            let final_r = (lum + (new_r - lum) * saturation_boost).clamp(0.0, 1.0);
-            let final_g = (lum + (new_g - lum) * saturation_boost).clamp(0.0, 1.0);
-            let final_b = (lum + (new_b - lum) * saturation_boost).clamp(0.0, 1.0);
+            // Smoothly gate boost above sky background noise so pure sky noise stays neutral
+            let max_sig = r_sig.max(g_sig).max(b_sig);
+            let weight = (max_sig / noise_gate).clamp(0.0, 1.0);
+            let eff_b_boost = 1.0 + (blue_boost - 1.0) * weight;
+            let eff_c_boost = 1.0 + (cyan_boost - 1.0) * weight;
+            let eff_sat = 1.0 + (saturation_boost - 1.0) * weight;
 
-            pixel[0] = final_r;
-            pixel[1] = final_g;
-            pixel[2] = final_b;
+            // Boost blue starlight reflection + cyan dust signal above background
+            let sr = r_sig;
+            let sg = g_sig * eff_c_boost;
+            let sb = b_sig * eff_b_boost;
+
+            // Apply saturation boost strictly to the background-subtracted signal
+            let sig_lum = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+            let sat_sr = (sig_lum + (sr - sig_lum) * eff_sat).max(0.0);
+            let sat_sg = (sig_lum + (sg - sig_lum) * eff_sat).max(0.0);
+            let sat_sb = (sig_lum + (sb - sig_lum) * eff_sat).max(0.0);
+
+            // Preserve negative background noise excursions symmetrically so MAD does not collapse
+            let final_dr = if dr >= 0.0 { sat_sr } else { dr };
+            let final_dg = if dg >= 0.0 { sat_sg } else { dg };
+            let final_db = if db >= 0.0 { sat_sb } else { db };
+
+            pixel[0] = (neutral_bg + final_dr).clamp(0.0, 1.0);
+            pixel[1] = (neutral_bg + final_dg).clamp(0.0, 1.0);
+            pixel[2] = (neutral_bg + final_db).clamp(0.0, 1.0);
         });
 
         Ok(out)
@@ -367,19 +519,22 @@ impl HistogramProcessor {
                 return;
             }
 
-            let lum = (0.2126 * r + 0.7152 * g + 0.0722 * b).max(1e-7);
-            let net_lum = (lum - black_point).max(0.0);
+            let r_net = (r - black_point).max(0.0);
+            let g_net = (g - black_point).max(0.0);
+            let b_net = (b - black_point).max(0.0);
+            let net_lum = 0.2126 * r_net + 0.7152 * g_net + 0.0722 * b_net;
 
-            let new_lum = if net_lum <= 0.0 {
-                0.0
+            if net_lum > 1e-7 {
+                let new_lum = (stretch_factor * net_lum).asinh() / asinh_norm;
+                let scale = new_lum / net_lum;
+                pixel[0] = (r_net * scale).clamp(0.0, 1.0);
+                pixel[1] = (g_net * scale).clamp(0.0, 1.0);
+                pixel[2] = (b_net * scale).clamp(0.0, 1.0);
             } else {
-                (stretch_factor * net_lum).asinh() / asinh_norm
-            };
-
-            let scale = new_lum / lum;
-            pixel[0] = (r * scale).clamp(0.0, 1.0);
-            pixel[1] = (g * scale).clamp(0.0, 1.0);
-            pixel[2] = (b * scale).clamp(0.0, 1.0);
+                pixel[0] = 0.0;
+                pixel[1] = 0.0;
+                pixel[2] = 0.0;
+            }
         });
 
         Ok(out)

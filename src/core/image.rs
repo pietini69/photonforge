@@ -97,8 +97,8 @@ impl AstroImage {
             return (0.0, 0.0);
         }
 
-        // Subsample for fast estimation if image is large
-        let step = if self.width * self.height > 2_000_000 { 4 } else { 1 };
+        // Subsample for fast estimation if image is large (prime step 7 avoids aliasing with 2x/3x/4x Drizzle grids)
+        let step = if self.width * self.height > 2_000_000 { 7 } else { 1 };
         let mut samples: Vec<f32> = Vec::with_capacity((self.width * self.height) / step);
 
         for (i, chunk) in self.data.chunks_exact(self.channels).enumerate() {
@@ -552,6 +552,12 @@ impl AstroImage {
                 let s = stf.arcsinh_stretch.max(1.0);
                 let b = stf.arcsinh_black;
                 let norm = s.asinh();
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 out.par_chunks_exact_mut(3)
                     .enumerate()
@@ -565,17 +571,16 @@ impl AstroImage {
                             pixel[1] = byte;
                             pixel[2] = byte;
                         } else {
-                            let r = self.data[src_idx];
-                            let g = self.data[src_idx + 1];
-                            let bl = self.data[src_idx + 2];
-                            let intensity = (r + g + bl) / 3.0;
-                            let v = (intensity - b).max(0.0);
-                            if intensity > 1e-6 {
-                                let stretched_i = (s * v).asinh() / norm;
+                            let r_net = (self.data[src_idx] - (b + ch_ped[0])).max(0.0);
+                            let g_net = (self.data[src_idx + 1] - (b + ch_ped[1])).max(0.0);
+                            let b_net = (self.data[src_idx + 2] - (b + ch_ped[2])).max(0.0);
+                            let intensity = (r_net + g_net + b_net) / 3.0;
+                            if intensity > 1e-7 {
+                                let stretched_i = (s * intensity).asinh() / norm;
                                 let scale = stretched_i / intensity;
-                                pixel[0] = (r * scale * 255.0).clamp(0.0, 255.0) as u8;
-                                pixel[1] = (g * scale * 255.0).clamp(0.0, 255.0) as u8;
-                                pixel[2] = (bl * scale * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[0] = (r_net * scale * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[1] = (g_net * scale * 255.0).clamp(0.0, 255.0) as u8;
+                                pixel[2] = (b_net * scale * 255.0).clamp(0.0, 255.0) as u8;
                             } else {
                                 pixel[0] = 0;
                                 pixel[1] = 0;
@@ -590,15 +595,23 @@ impl AstroImage {
                 let b = stf.hms_b.max(0.0001);
                 let sp = stf.hms_sp.max(0.0);
                 let grip = stf.hms_color_grip.max(0.0);
+                let avg_sh = 0.2126 * stf.channels[0].shadows
+                    + 0.7152 * stf.channels[1].shadows
+                    + 0.0722 * stf.channels[2].shadows;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 let asinh_b = b.asinh();
-                let denom = ((d * (1.0 - sp) + b).asinh() - asinh_b).max(1e-6);
+                let denom = ((d * (1.0 - sp).max(1e-4) + b).asinh() - asinh_b).max(1e-6);
 
-                let hms_eval = |val: f32| -> f32 {
-                    if val <= sp {
+                let hms_eval_net = |net_val: f32| -> f32 {
+                    if net_val <= 0.0 {
                         0.0
                     } else {
-                        (((d * (val - sp) + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
+                        (((d * net_val + b).asinh() - asinh_b) / denom).clamp(0.0, 1.0)
                     }
                 };
 
@@ -607,27 +620,27 @@ impl AstroImage {
                     .for_each(|(i, pixel)| {
                         let src_idx = i * self.channels;
                         if self.channels == 1 {
-                            let v = self.data[src_idx];
-                            let stretched = hms_eval(v);
+                            let v = (self.data[src_idx] - sp).max(0.0);
+                            let stretched = hms_eval_net(v);
                             let byte = (stretched * 255.0).clamp(0.0, 255.0) as u8;
                             pixel[0] = byte;
                             pixel[1] = byte;
                             pixel[2] = byte;
                         } else {
-                            let r = self.data[src_idx];
-                            let g = self.data[src_idx + 1];
-                            let bl = self.data[src_idx + 2];
+                            let r_net = (self.data[src_idx] - (sp + ch_ped[0])).max(0.0);
+                            let g_net = (self.data[src_idx + 1] - (sp + ch_ped[1])).max(0.0);
+                            let b_net = (self.data[src_idx + 2] - (sp + ch_ped[2])).max(0.0);
 
-                            // True Color / Photometric Luminance vector extraction
-                            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+                            // True Color / Photometric Luminance vector extraction on background-subtracted signal
+                            let lum = 0.2126 * r_net + 0.7152 * g_net + 0.0722 * b_net;
                             if lum > 1e-7 {
-                                let stretched_lum = hms_eval(lum);
+                                let stretched_lum = hms_eval_net(lum);
                                 let scale = stretched_lum / lum;
 
                                 // Base vector preservation
-                                let r_base = r * scale;
-                                let g_base = g * scale;
-                                let b_base = bl * scale;
+                                let r_base = r_net * scale;
+                                let g_base = g_net * scale;
+                                let b_base = b_net * scale;
 
                                 // Chromatic vector grip (saturation control)
                                 let (r_fin, g_fin, b_fin) = if (grip - 1.0).abs() < 1e-3 {
@@ -656,6 +669,12 @@ impl AstroImage {
                 let a = stf.log_factor.max(1.0);
                 let b = stf.log_black;
                 let norm = (1.0 + a).ln().max(1e-6);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 out.par_chunks_exact_mut(3)
                     .enumerate()
@@ -670,7 +689,7 @@ impl AstroImage {
                             pixel[2] = byte;
                         } else {
                             for c in 0..3 {
-                                let v = (self.data[src_idx + c] - b).max(0.0);
+                                let v = (self.data[src_idx + c] - (b + ch_ped[c])).max(0.0);
                                 let stretched = (1.0 + a * v).ln() / norm;
                                 pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
                             }
@@ -683,6 +702,12 @@ impl AstroImage {
                 let b = stf.ghs_b;
                 let sub0 = (d * (-b)).asinh();
                 let den = ((d * (1.0 - b)).asinh() - sub0).max(1e-6);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 out.par_chunks_exact_mut(3)
                     .enumerate()
@@ -698,7 +723,7 @@ impl AstroImage {
                             pixel[2] = byte;
                         } else {
                             for c in 0..3 {
-                                let v = self.data[src_idx + c];
+                                let v = (self.data[src_idx + c] - ch_ped[c]).max(0.0);
                                 let num = (d * (v - b)).asinh() - sub0;
                                 let stretched = (num / den).clamp(0.0, 1.0);
                                 pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
@@ -711,6 +736,12 @@ impl AstroImage {
                 let gamma = stf.gamma.clamp(0.05, 2.0);
                 let b = stf.gamma_black;
                 let den = (1.0 - b).max(1e-5);
+                let avg_sh = (stf.channels[0].shadows + stf.channels[1].shadows + stf.channels[2].shadows) / 3.0;
+                let ch_ped = [
+                    stf.channels[0].shadows - avg_sh,
+                    stf.channels[1].shadows - avg_sh,
+                    stf.channels[2].shadows - avg_sh,
+                ];
 
                 out.par_chunks_exact_mut(3)
                     .enumerate()
@@ -725,7 +756,7 @@ impl AstroImage {
                             pixel[2] = byte;
                         } else {
                             for c in 0..3 {
-                                let v = ((self.data[src_idx + c] - b) / den).clamp(0.0, 1.0);
+                                let v = ((self.data[src_idx + c] - (b + ch_ped[c])) / den).clamp(0.0, 1.0);
                                 let stretched = v.powf(gamma);
                                 pixel[c] = (stretched * 255.0).clamp(0.0, 255.0) as u8;
                             }

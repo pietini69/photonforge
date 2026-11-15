@@ -22,7 +22,8 @@ impl StarReduction {
         let height = image.height;
         let channels = image.channels;
         let amt = amount.clamp(0.0, 1.0);
-        let rad = radius.clamp(1, 3);
+        let res_scale = ((width.max(height) as f32) / 1920.0).round().clamp(1.0, 4.0) as usize;
+        let rad = radius.clamp(1, 3) * res_scale;
         let iters = iterations.clamp(1, 3);
 
         let mut current_img = image.clone();
@@ -47,8 +48,8 @@ impl StarReduction {
                 });
 
             // 2. Morphological Opening (Erosion followed by Dilation) to extract background/nebula
-            // Structuring element radius for star detection: rad + 2 (typically 3 or 4)
-            let open_rad = rad + 2;
+            // Structuring element radius for star detection scaled by resolution
+            let open_rad = rad + 2 * res_scale;
             let eroded_lum = min_filter_2d(&lum, width, height, open_rad);
             let opened_lum = max_filter_2d(&eroded_lum, width, height, open_rad);
 

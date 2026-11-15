@@ -308,9 +308,12 @@ impl PhotometricColorCalibrator {
         let candidates = StarDetector::detect(image, config.max_stars.max(20));
         let detected_stars = candidates.len();
 
-        let r_ap = config.aperture_radius.max(2.0);
-        let r_in = config.annulus_inner.max(r_ap + 1.5);
-        let r_out = config.annulus_outer.max(r_in + 2.5);
+        // Scale aperture and sky annulus radii with image resolution (e.g. 2x/3x/4x Drizzle)
+        // so the sky annulus does not land inside the star's PSF or reflection halo.
+        let res_scale = ((width.max(height) as f32) / 1920.0).clamp(1.0, 4.0);
+        let r_ap = config.aperture_radius.max(2.0) * res_scale;
+        let r_in = config.annulus_inner.max(config.aperture_radius + 1.5) * res_scale;
+        let r_out = config.annulus_outer.max(config.annulus_inner + 2.5) * res_scale;
         let margin = (r_out.ceil() as usize) + 2;
 
         let mut measurements: Vec<StarPhotometry> = Vec::with_capacity(detected_stars);
@@ -448,13 +451,14 @@ impl PhotometricColorCalibrator {
             }
 
             if do_bg_norm {
-                // Preserve noise distribution symmetrically around neutral background while scaling signal
+                // Scale positive astronomical signal while keeping negative sky noise
+                // excursions unscaled so per-channel background MAD remains balanced
                 let dr = r - bg_r;
                 let dg = g - bg_g;
                 let db = b - bg_b;
 
-                let scale_r = if dr >= 0.0 { k_r } else { k_r.min(1.25) };
-                let scale_b = if db >= 0.0 { k_b } else { k_b.min(1.25) };
+                let scale_r = if dr >= 0.0 { k_r } else { 1.0 };
+                let scale_b = if db >= 0.0 { k_b } else { 1.0 };
 
                 pixel[0] = (bg_neutral + dr * scale_r).clamp(0.0, 1.0);
                 pixel[1] = (bg_neutral + dg * k_g).clamp(0.0, 1.0);
@@ -486,7 +490,7 @@ impl PhotometricColorCalibrator {
         let low = (med0 - 2.5 * mad0).max(0.0);
         let high = med0 + 2.5 * mad0;
 
-        let step = if image.width * image.height > 1_000_000 { 4 } else { 1 };
+        let step = if image.width * image.height > 1_000_000 { 7 } else { 1 };
         let mut sky_samples: Vec<f32> = Vec::with_capacity((image.width * image.height) / step);
 
         for (i, px) in image.data.chunks_exact(image.channels).enumerate() {

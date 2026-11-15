@@ -98,11 +98,16 @@ impl StarDetector {
 
         let threshold = median + 3.5 * mad;
 
-        // 3. Find 3x3 local peaks above threshold
+        // Scale star centroid window and deduplication radius for 2x/3x/4x Drizzle resolutions
+        let res_scale = ((width.max(height) as f32) / 1920.0).clamp(1.0, 4.0);
+        let centroid_rad = (res_scale.round() as isize).clamp(1, 4);
+        let border = (10 * (centroid_rad as usize)).min(width.min(height) / 8).max(10);
+
+        // 3. Find local peaks above threshold
         let mut candidates = Vec::new();
-        for y in 10..(height - 10) {
+        for y in border..(height - border) {
             let row_offset = y * width;
-            for x in 10..(width - 10) {
+            for x in border..(width - border) {
                 let val = lum[row_offset + x];
                 if val <= threshold {
                     continue;
@@ -132,10 +137,10 @@ impl StarDetector {
                     let mut sum_w = 0.0f32;
                     let mut sum_wx = 0.0f32;
                     let mut sum_wy = 0.0f32;
-                    for dy in -1..=1 {
+                    for dy in -centroid_rad..=centroid_rad {
                         let ny = (y as isize + dy) as usize;
                         let n_row = ny * width;
-                        for dx in -1..=1 {
+                        for dx in -centroid_rad..=centroid_rad {
                             let nx = (x as isize + dx) as usize;
                             let w = (lum[n_row + nx] - median).max(0.0);
                             sum_w += w;
@@ -158,13 +163,15 @@ impl StarDetector {
         // 4. Sort by flux descending
         candidates.sort_by(|a, b| b.flux.partial_cmp(&a.flux).unwrap_or(std::cmp::Ordering::Equal));
 
-        // 5. Deduplicate stars that are within 6 pixels of an existing brighter star
+        // 5. Deduplicate stars that are within (6 * res_scale) pixels of an existing brighter star
+        let min_dist = 6.0 * res_scale;
+        let min_dist_sq = min_dist * min_dist;
         let mut clean_stars = Vec::with_capacity(max_stars);
         for star in candidates {
             let too_close = clean_stars.iter().any(|c: &Star| {
                 let dx = star.x - c.x;
                 let dy = star.y - c.y;
-                (dx * dx + dy * dy) < 36.0
+                (dx * dx + dy * dy) < min_dist_sq
             });
             if !too_close {
                 clean_stars.push(star);

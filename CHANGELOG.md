@@ -2,6 +2,16 @@
 
 All notable changes to **PhotonForge** are documented in this file.
 
+## [1.0.5] - 2026-11-15
+
+### Fixed & Improved
+- **True Color & 2x/3x/4x Super-Resolution Drizzle Photometry Pipeline:**
+  - **Auto-STF Color Preservation:** Unlinked Auto-STF now neutralizes per-channel sky background pedestals using a shared average MAD (`avg_mad`) across R, G, B instead of scaling each channel inversely by its own `mad_c`. Prevents 2x/3x/4x Drizzle interpolation and single-channel nebulosity (e.g. M45 Pleiades blue reflection nebula) from crushing blue contrast or canceling out PCC/SPCC and White Balance adjustments.
+  - **Resolution-Adaptive PCC/SPCC & Star Detection (`1x..4x` Drizzle):** Automatically scales photometric aperture radii (`r_ap`), local sky background annuli (`r_in..r_out`), star centroid windows, deduplication distances, and morphological star reduction kernels with image resolution so 3x and 4x Drizzle stars are measured cleanly outside their PSF and reflection halos.
+  - **Reflection Nebula Boost, Saturation & Color Balance:** Operates strictly on the background-subtracted astronomical signal above the neutralized sky pedestal while preserving symmetric negative background noise excursions. Fixes blue saturation inversion on high-pedestal FITS frames (such as ZWO Seestar `BZERO=32768` sub-frames).
+  - **HyperMetric Stretch (HMS) & Arcsinh Chromaticity:** Computes luminance and chromatic vectors on pedestal-subtracted net signal (`r_net, g_net, b_net`) with luminance-preserving background neutralization and expanded black point slider range (`0.00..0.35`), eliminating 50× color dilution on raw pedestal frames.
+  - **Per-Channel Live Stack Background Normalization:** Normalizes R, G, and B sky backgrounds independently during live stacking (`1x..4x` Drizzle).
+
 ## [1.0.4] - 2026-11-06
 
 ### Added & Improved

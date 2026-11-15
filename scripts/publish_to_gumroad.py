@@ -21,7 +21,7 @@ DIST_DIR = os.path.join(PROJECT_DIR, "dist")
 ASSETS_DIR = os.path.join(DIST_DIR, "gumroad_assets")
 TRACKER_FILE = "/Volumes/Dataa/EtsyTuotteet/gumroad_published.json"
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 PRODUCT_NAME = "PhotonForge – Smart Telescope Control & 32-bit Astrophotography Suite (macOS, Windows, Linux)"
 CUSTOM_PERMALINK = "photonforge"
 CURRENCY = "eur"
@@ -61,6 +61,7 @@ DESCRIPTION_HTML = f"""
 
 <h3>⚡ What’s New in v{VERSION}</h3>
 <ul>
+  <li><strong>🎨 True Color &amp; 2x/3x/4x Super-Resolution Drizzle Photometry Pipeline:</strong> Resolution-adaptive PCC/SPCC star photometry, luminance-preserving Auto-STF background neutralization, and pedestal-subtracted Reflection Nebula Boost, HyperMetric Stretch (HMS) &amp; Arcsinh processing — delivering rich, accurate colors (such as M45 Pleiades blue reflection nebulae) across 1x, 2x, 3x, and 4x Drizzle stacks.</li>
   <li><strong>📸 Direct ASCOM Alpaca Live Stacking &amp; Continuous Capture:</strong> Native automated camera exposure loop for ZWO Seestar (S50/S50 Pro/S30/S30 Pro) and ASCOM Alpaca mounts. PhotonForge commands exposures, polls completion, fetches 16-bit raw sensor frames directly over HTTP, writes compliant FITS files, and feeds the Live Stacker in real-time — no phone required!</li>
   <li><strong>⏱️ Sub-Exposure Time Presets &amp; Custom Controls:</strong> Instant exposure duration buttons (<code>10s</code>, <code>20s</code>, <code>30s</code>, <code>60s</code>) and custom drag slider (1..300s) across Telescope Controls, Night Sequencer targets, and Live Stacking settings.</li>
   <li><strong>📂 Dual Imaging Workflow:</strong> Seamless support for both direct standalone Alpaca camera shooting and traditional Seestar mobile app capture with 1-click <em>Open Seestar Network Share (EMMC Images)</em> integration.</li>

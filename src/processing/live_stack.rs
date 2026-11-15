@@ -222,7 +222,7 @@ impl LiveStackEngine {
                     &Transform2D::identity(),
                     scale,
                     out_w,
-                    0.0,
+                    &[0.0; 3],
                     &mut accum,
                     &mut coverage,
                 );
@@ -326,12 +326,16 @@ impl LiveStackEngine {
             Transform2D::identity()
         };
 
-        // 4. Background median normalization against reference
-        let ref_bg = internal.reference_image.as_ref().unwrap().channel_median_and_mad(0).0;
-        let cur_bg = incoming.channel_median_and_mad(0).0;
-        let bg_diff = ref_bg - cur_bg;
+        // 4. Per-channel background median normalization against reference
+        let ref_img = internal.reference_image.as_ref().unwrap();
+        let mut bg_diff = [0.0f32; 3];
+        for c in 0..ref_ch.min(3) {
+            let ref_bg = ref_img.channel_median_and_mad(c).0;
+            let cur_bg = incoming.channel_median_and_mad(c).0;
+            bg_diff[c] = ref_bg - cur_bg;
+        }
 
-        // 5. Accumulate into master buffer (supports subpixel 2x Drizzle super-resolution)
+        // 5. Accumulate into master buffer (supports subpixel 2x/3x/4x Drizzle super-resolution)
         let out_w = ref_w * scale;
         let out_h = ref_h * scale;
         let total_pixels = out_w * out_h;
@@ -346,7 +350,7 @@ impl LiveStackEngine {
             &transform,
             scale,
             out_w,
-            bg_diff,
+            &bg_diff,
             accum_sum,
             coverage_count,
         );
@@ -410,7 +414,7 @@ impl LiveStackEngine {
         transform: &Transform2D,
         scale: usize,
         out_w: usize,
-        bg_diff: f32,
+        bg_diff: &[f32; 3],
         accum_sum: &mut [f32],
         coverage_count: &mut [u32],
     ) {
@@ -474,7 +478,7 @@ impl LiveStackEngine {
                                     + w10 * src[idx10 + c]
                                     + w01 * src[idx01 + c]
                                     + w11 * src[idx11 + c];
-                                let adjusted = (s + bg_diff).max(0.0);
+                                let adjusted = (s + bg_diff[c.min(2)]).max(0.0);
                                 row_accum[out_idx + c] += adjusted;
                             }
                         }

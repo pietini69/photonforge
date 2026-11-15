@@ -3308,7 +3308,7 @@ impl PhotonForgeApp {
 
                     ui.add_space(4.0);
                     ui.label(crate::i18n::tr("Mustapiste (Black Point):"));
-                    if ui.add(egui::Slider::new(&mut self.stf_params.arcsinh_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                    if ui.add(egui::Slider::new(&mut self.stf_params.arcsinh_black, 0.0..=0.35).step_by(0.001).trailing_fill(true)).changed() {
                         self.image_counter += 1;
                     }
                 }
@@ -3331,7 +3331,7 @@ impl PhotonForgeApp {
 
                     ui.add_space(4.0);
                     ui.label(crate::i18n::tr("Varjopiste (Shadow Point SP):"));
-                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_sp, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                    if ui.add(egui::Slider::new(&mut self.stf_params.hms_sp, 0.0..=0.35).step_by(0.001).trailing_fill(true)).changed() {
                         self.image_counter += 1;
                     }
 
@@ -3344,8 +3344,9 @@ impl PhotonForgeApp {
                     ui.add_space(6.0);
                     if ui.button(crate::i18n::tr("🪄 Laske adaptiivinen tausta (SP)")).clicked() {
                         if let Some(img) = self.active_image() {
-                            let (med, mad) = img.channel_median_and_mad(0);
-                            self.stf_params.hms_sp = (med - 2.8 * mad).max(0.0);
+                            let auto = StfParameters::compute_auto_with_target(img, self.stf_params.linked_channels, self.stf_params.target_bg);
+                            self.stf_params.channels = auto.channels;
+                            self.stf_params.hms_sp = auto.hms_sp;
                             self.image_counter += 1;
                         }
                     }
@@ -3363,7 +3364,7 @@ impl PhotonForgeApp {
 
                     ui.add_space(4.0);
                     ui.label(crate::i18n::tr("Mustapiste:"));
-                    if ui.add(egui::Slider::new(&mut self.stf_params.log_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                    if ui.add(egui::Slider::new(&mut self.stf_params.log_black, 0.0..=0.35).step_by(0.001).trailing_fill(true)).changed() {
                         self.image_counter += 1;
                     }
                 }
@@ -3380,7 +3381,7 @@ impl PhotonForgeApp {
 
                     ui.add_space(4.0);
                     ui.label(crate::i18n::tr("Symmetriapiste / Taustataso (b):"));
-                    if ui.add(egui::Slider::new(&mut self.stf_params.ghs_b, 0.0..=0.3).step_by(0.005).trailing_fill(true)).changed() {
+                    if ui.add(egui::Slider::new(&mut self.stf_params.ghs_b, 0.0..=0.35).step_by(0.005).trailing_fill(true)).changed() {
                         self.image_counter += 1;
                     }
                 }
@@ -3397,7 +3398,7 @@ impl PhotonForgeApp {
 
                     ui.add_space(4.0);
                     ui.label(crate::i18n::tr("Mustapiste:"));
-                    if ui.add(egui::Slider::new(&mut self.stf_params.gamma_black, 0.0..=0.1).step_by(0.001).trailing_fill(true)).changed() {
+                    if ui.add(egui::Slider::new(&mut self.stf_params.gamma_black, 0.0..=0.35).step_by(0.001).trailing_fill(true)).changed() {
                         self.image_counter += 1;
                     }
                 }

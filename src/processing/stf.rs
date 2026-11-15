@@ -206,51 +206,77 @@ impl StfParameters {
                 highlights,
             };
             stf.channels = [ch, ch, ch];
-        } else if linked {
-            // Linked RGB mode: each channel preserves its own shadow clip to avoid color clipping,
-            // but shares a common midtones curve to preserve raw color ratios.
-            let mut norm_meds = [0.5f32; 3];
-            for c in 0..image.channels.min(3) {
-                let (median, mad) = image.channel_median_and_mad(c);
-                let shadows = (median + shadows_clip * mad).max(0.0);
-                let highlights = 1.0;
-                stf.channels[c].shadows = shadows;
-                stf.channels[c].highlights = highlights;
-
-                if (highlights - shadows) > 1e-5 {
-                    norm_meds[c] = ((median - shadows) / (highlights - shadows)).clamp(0.001, 0.999);
-                }
-            }
-
-            let avg_norm = (norm_meds[0] + norm_meds[1] + norm_meds[2]) / 3.0;
-            let common_m = find_midtones_balance(target_bg, avg_norm);
-            for c in 0..3 {
-                stf.channels[c].midtones = common_m;
-            }
+            stf.hms_sp = shadows;
+            stf.arcsinh_black = shadows;
+            stf.log_black = shadows;
+            stf.ghs_b = median.clamp(0.005, 0.30);
+            stf.gamma_black = shadows;
         } else {
-            // Unlinked per channel: independent background neutralization (standard for raw OSC)
+            let mut medians = [0.0f32; 3];
+            let mut mads = [0.0f32; 3];
             for c in 0..image.channels.min(3) {
-                let (median, mad) = image.channel_median_and_mad(c);
-                let shadows = (median + shadows_clip * mad).max(0.0);
-                let highlights = 1.0;
+                let (med, mad) = image.channel_median_and_mad(c);
+                medians[c] = med;
+                mads[c] = mad;
+            }
 
-                let m = if (highlights - shadows) > 1e-5 {
-                    let norm_med = ((median - shadows) / (highlights - shadows)).clamp(0.001, 0.999);
-                    find_midtones_balance(target_bg, norm_med)
+            // Use a shared average MAD across R, G, B so that Bayer 1R:2G:1B noise differences
+            // or single-channel nebulosity (e.g. blue reflection nebula in M45 or Ha in M42)
+            // do not distort relative RGB contrast gains or cancel out PCC / White Balance.
+            let avg_mad = ((mads[0] + mads[1] + mads[2]) / 3.0).max(1e-6);
+
+            if linked {
+                // Linked RGB mode: common shadow point and common midtones curve (preserves channel offsets & ratios)
+                let min_med = medians[0].min(medians[1]).min(medians[2]);
+                let avg_med = (medians[0] + medians[1] + medians[2]) / 3.0;
+                let common_shadows = (min_med + shadows_clip * avg_mad).max(0.0);
+                let highlights = 1.0;
+                let norm_med = if (highlights - common_shadows) > 1e-5 {
+                    ((avg_med - common_shadows) / (highlights - common_shadows)).clamp(0.001, 0.999)
                 } else {
                     0.5
                 };
+                let common_m = find_midtones_balance(target_bg, norm_med);
+                for c in 0..3 {
+                    stf.channels[c] = ChannelStf {
+                        shadows: common_shadows,
+                        midtones: common_m,
+                        highlights,
+                    };
+                }
+            } else {
+                // Unlinked (background-neutralizing) RGB mode:
+                // Each channel subtracts its own sky median pedestal using the shared `avg_mad`,
+                // aligning R, G, B sky backgrounds to `target_bg` while keeping identical signal stretch gains.
+                let bg_offset = (-shadows_clip * avg_mad).max(1e-6);
+                for c in 0..image.channels.min(3) {
+                    let shadows = (medians[c] + shadows_clip * avg_mad).max(0.0);
+                    let highlights = 1.0;
 
-                stf.channels[c] = ChannelStf {
-                    shadows,
-                    midtones: m,
-                    highlights,
-                };
+                    let m = if (highlights - shadows) > 1e-5 {
+                        let norm_med = (bg_offset / (highlights - shadows)).clamp(0.001, 0.999);
+                        find_midtones_balance(target_bg, norm_med)
+                    } else {
+                        0.5
+                    };
+
+                    stf.channels[c] = ChannelStf {
+                        shadows,
+                        midtones: m,
+                        highlights,
+                    };
+                }
             }
-        }
 
-        let (first_med, first_mad) = image.channel_median_and_mad(0);
-        stf.hms_sp = (first_med - 2.8 * first_mad).max(0.0);
+            let avg_sh = 0.2126 * stf.channels[0].shadows
+                + 0.7152 * stf.channels[1].shadows
+                + 0.0722 * stf.channels[2].shadows;
+            stf.hms_sp = avg_sh;
+            stf.arcsinh_black = avg_sh;
+            stf.log_black = avg_sh;
+            stf.ghs_b = ((medians[0] + medians[1] + medians[2]) / 3.0).clamp(0.005, 0.30);
+            stf.gamma_black = avg_sh;
+        }
 
         stf
     }
